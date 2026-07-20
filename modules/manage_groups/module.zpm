@@ -1,0 +1,41 @@
+<div class="zmodule_content panel" id="zmodule_header_<@ ModuleName @>">
+    <div class="card-header">
+        <img src="<@ ModuleIcon @>" width="35" height="35" border="0" alt="<@ ModuleName @>">
+
+        <div class="zmodule_title">
+            <@ ModuleName @>
+        </div>
+
+        <div class="zmodule_desc" id="zmodule_desc_<@ ModuleName @>"><p>Los roles del sistema definen qué módulos del panel ve y usa cada tipo de cuenta.</p></div>
+
+    </div>
+
+    <div class="zgrid_wrapper">
+        <% if DefaultGroupList %>
+        <h2>Roles del sistema</h2>
+        <table class="table table-striped">
+            <tr>
+                <th><: Group :></th>
+                <th nowrap="nowrap"><: Users :></th>
+                <th><: Description :></th>
+            </tr>
+            <% loop DefaultGroupList %>
+            <tr>
+                <td><& groupname &></td>
+                <td><& usersingroup &></td>
+                <td><& groupdesc &></td>
+            </tr>
+            <% endloop %>
+        </table>
+        <% endif %>
+
+        <div class="alert alert-info" style="margin:0;">
+            <i class="bi bi-info-circle me-1"></i>
+            El acceso a los módulos del panel se rige por el <strong>rol</strong> de la cuenta
+            (administrador / reseller / usuario); los <strong>recursos</strong> (dominios, correo,
+            disco…) se definen en el <strong>paquete</strong>. La creación de grupos personalizados
+            está desactivada.
+        </div>
+    </div>
+
+</div>

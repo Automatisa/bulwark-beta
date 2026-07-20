@@ -1,0 +1,72 @@
+<div class="zmodule_content panel" id="zmodule_header_<@ ModuleName @>">
+    <div class="card-header">
+        <img src="<@ ModuleIcon @>" width="35" height="35" border="0" alt="<@ ModuleName @>">
+
+        <div class="zmodule_title">
+            <@ ModuleName @>
+        </div>
+    </div>
+
+    <@ Result @>
+
+
+
+    <% if IsShowModuleInfo %>
+    <div class="zgrid_wrapper">
+        <h2><: Module Information :></h2>
+        <div class="table-responsive">
+        <table class="table table-striped">
+            <tr>
+                <th><: Module name :></th>
+                <td><@ ModuleInfoName @></td>
+            </tr>
+            <tr>
+                <th><: Module description :></th>
+                <td><@ ModuleDescription @></td>
+            </tr>
+            <tr>
+                <th><: Module developer :></th>
+                <td><% if ModuleDeveloperURL %><a href="<@ ModuleDeveloperURL @>"><% endif %><@ ModuleDeveloperName @><% if ModuleDeveloperURL %></a><% endif %> <% if ModuleDeveloperEmail %>(<@ ModuleDeveloperEmail @>)<% endif %></td>
+            </tr>
+            <tr>
+                <th><: Module version :></th>
+                <td><@ ModuleVersion @></td>
+            </tr>
+            <tr>
+                <th><: Latest Version :></th>
+                <td><% if LatestVersion %><a href="<@ ModuleUpdateURL @>"><@ LatestVersion @></a><% else %>Already up to date!<% endif %></td>
+            </tr>
+            <tr>
+                <th><: Module Type :></th>
+                <td><@ ModuleType @></td>
+            </tr>
+        </table>
+        </div>
+        <@ ModuleSettingsHTML @>
+        <p><a href="./?module=moduleadmin">Return to Module Admin</a></p>
+    </div>
+    <% else %>
+    <div class="zgrid_wrapper">
+        <@ AdminModules @>
+    </div>
+    <div class="zgrid_wrapper">
+        <@ ConfigModules @>
+    </div>
+
+    <div class="zform_wrapper">
+        <h2><: Install a new module :></h2>
+        <p><: You can automatically install a new module by uploading your bulwark package archive (.zpp file) and then click 'Install' to begin the process. :></p>
+        <form action="./?module=moduleadmin&action=InstallModule" method="post" enctype="multipart/form-data">
+            <@ CSFR_Tag @>
+            <div class="mb-3">
+                <label class="form-label fw-semibold"><: Module Archive :></label>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <input type="file" name="modulefile" id="modulefile" class="form-control" style="max-width:320px;">
+                    <button class="button-loader btn btn-primary" type="submit" name="submit"><i class="bi bi-download me-1"></i><: Install! :></button>
+                </div>
+            </div>
+        </form>
+    </div>
+    <% endif %>
+
+</div>

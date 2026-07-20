@@ -1,0 +1,127 @@
+<@ InstallDatabase @>
+<div class="zmodule_content panel" id="zmodule_header_<@ ModuleName @>">
+    <div class="card-header">
+        <img src="<@ ModuleIcon @>" width="35" height="35" border="0" alt="<@ ModuleName @>">
+        <div class="zmodule_title"><@ ModuleName @></div>
+        <div class="zmodule_desc" id="zmodule_desc_<@ ModuleName @>"><@ Description @></div>
+    </div>
+
+    <@ Result @>
+
+    <div class="zform_wrapper">
+        <h2><i class="bi bi-hdd-network me-1"></i><: Pool de IPs :></h2>
+        <@ IpPoolHTML @>
+    </div>
+
+    <div class="zform_wrapper">
+        <h2><: Status :></h2>
+        <% if AutoIPSettings %>
+        <% loop AutoIPSettings %>
+        <table class="zform table table-striped">
+            <tr>
+                <th style="width:200px;"><: Server IP (for DNS) :>:</th>
+                <td><strong><& ai_oldip_vc &></strong></td>
+            </tr>
+        </table>
+        <% endloop %>
+        <% endif %>
+    </div>
+
+    <div class="zform_wrapper">
+        <h2><: Internal IPs :></h2>
+        <p><small>IPv4 addresses bound to this server's network interfaces. Click Select to load an IP into the Server IP field below.</small></p>
+        <% if DetectedIPs %>
+        <table class="zform table table-striped">
+            <tr>
+                <th style="width:90px;"><: Interface :></th>
+                <th style="width:150px;"><: IP Address :></th>
+                <th style="width:80px;"><: Type :></th>
+                <th style="width:50px;"><: Active :></th>
+                <th></th>
+            </tr>
+            <% loop DetectedIPs %>
+            <tr>
+                <td><code><& ai_iface &></code></td>
+                <td><strong><& ai_ip &></strong></td>
+                <td><span style="<& ai_typecss &>"><& ai_type &></span></td>
+                <td><& ai_isactive &></td>
+                <td>
+                    <button type="button" class="btn btn-sm btn-secondary"
+                        onclick="var f=document.getElementById('inManualIP');if(f){f.value='<& ai_ip &>';f.style.background='#ffffcc';f.focus();}">
+                        <i class="bi bi-check-square me-1"></i><: Select :>
+                    </button>
+                </td>
+            </tr>
+            <% endloop %>
+        </table>
+        <% endif %>
+    </div>
+
+    <% if AutoIPSettings %>
+    <form action="./?module=autoip&action=updateautoip" method="post" name="frmAutoIP" id="frmAutoIP">
+    <@ CSFR_Tag @>
+    <% loop AutoIPSettings %>
+
+    <div class="zform_wrapper">
+        <h2><: Server IP Settings :></h2>
+        <table class="zform table table-striped">
+            <tr>
+                <th style="width:200px;"><: Server IP :>:</th>
+                <td>
+                    <input type="text" id="inManualIP" name="inManualIP" value="<& ai_oldip_vc &>" style="width:200px;" maxlength="45">
+                    <br><small>Select from Internal IPs above or enter manually. Saves only the IP — existing DNS records are not modified.</small>
+                </td>
+            </tr>
+            <tr>
+                <th></th>
+                <td>
+                    <button class="btn btn-primary fg-button ui-state-default ui-corner-all" type="submit" name="inUpdate" value="1"><i class="bi bi-floppy me-1"></i>
+                        <: Save Settings :>
+                    </button>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="zform_wrapper">
+        <h2><: Sync Records :></h2>
+        <table class="zform table table-striped">
+            <tr>
+                <th style="width:200px;"><: IP to replace :>:</th>
+                <td>
+                    <input type="text" id="inSyncIP" name="inSyncIP" value="<& ai_syncip_vc &>" style="width:200px;" maxlength="45">
+                    <br><small>This IP will be replaced by the current Server IP in the selected target.</small>
+                </td>
+            </tr>
+            <tr>
+                <th></th>
+                <td>
+                    <button class="btn btn-warning fg-button ui-state-default ui-corner-all" type="submit" name="inForceDNS" value="1"><i class="bi bi-arrow-repeat me-1"></i>
+                        <: Sync DNS :>
+                    </button>
+                    &nbsp;&nbsp;
+                    <button class="btn btn-warning fg-button ui-state-default ui-corner-all" type="submit" name="inForceVhost" value="1"><i class="bi bi-arrow-repeat me-1"></i>
+                        <: Sync Vhost :>
+                    </button>
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <% endloop %>
+    </form>
+    <% endif %>
+
+    <div class="zform_wrapper">
+        <h2><: Information :></h2>
+        <p><b>Server IP</b><br>
+        The IP stored as the default for new DNS zone records. Select it from Internal IPs or enter it manually and click Save Settings. Saving does not modify existing DNS A records.</p>
+
+        <p><b>Internal IPs</b><br>
+        IPv4 addresses bound to the server's network interfaces. On a NAT/firewall setup only the private LAN IP appears here — enter the public WAN IP manually.</p>
+
+        <p><b>Sync Records</b><br>
+        Enter the old IP in the IP to replace field and click the target button. Sync DNS updates all DNS A records matching that IP to the current Server IP and rebuilds zone files. Sync Vhost updates all virtual hosts with that IP set as custom IP. Vhosts using * (no custom IP) are not affected.</p>
+    </div>
+
+</div>

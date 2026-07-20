@@ -1,0 +1,17 @@
+# NOTE: FreeBSD uses newsyslog(8), not logrotate.
+# Install logrotate from ports (sysutils/logrotate) or adapt to newsyslog.conf.d/
+
+/var/bulwark/logs/proftpd/access.log /var/bulwark/logs/proftpd/auth.log /var/bulwark/logs/proftpd/xferlog.www {
+       su root wheel
+       weekly
+       missingok
+       rotate 4
+       compress
+       delaycompress
+       notifempty
+       create 640 root wheel
+       sharedscripts
+       postrotate
+               service proftpd restart > /dev/null 2>&1 || true
+       endscript
+}

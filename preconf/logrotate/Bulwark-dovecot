@@ -1,0 +1,17 @@
+# NOTE: FreeBSD uses newsyslog(8), not logrotate.
+# Install logrotate from ports (sysutils/logrotate) or adapt to newsyslog.conf.d/
+
+/var/bulwark/logs/dovecot/*.log {
+       su vmail mail
+       weekly
+       missingok
+       rotate 4
+       compress
+       delaycompress
+       notifempty
+       create 640 vmail mail
+       sharedscripts
+       postrotate
+               doveadm log reopen
+       endscript
+}

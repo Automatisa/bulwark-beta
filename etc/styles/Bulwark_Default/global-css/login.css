@@ -1,0 +1,103 @@
+/* Login Page CSS */
+
+body.login-bg {
+    background: linear-gradient(160deg, #eef1f5 0%, #dde4ee 100%);
+    min-height: 100vh;
+    padding: 1.5rem 0;
+}
+
+.login-wrapper {
+    width: 100%;
+    max-width: 390px;
+    padding: 0 1rem;
+    margin: auto;
+}
+
+/* Logo */
+.login-logo {
+    max-width: 200px;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+/* Tarjeta */
+.login-card {
+    border: 1px solid #e5e9f0;
+    border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(30, 45, 80, .10);
+    overflow: hidden;
+}
+.login-card .card-body {
+    padding: 1.75rem 1.75rem 2rem;
+}
+.login-card .card-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #2b3444;
+}
+
+/* Etiquetas y campos con ritmo uniforme */
+.login-card .form-label {
+    font-weight: 600;
+    font-size: .82rem;
+    color: #3a4356;
+    margin-bottom: .35rem;
+}
+.login-card .form-control {
+    border-radius: 8px;
+    border-color: #d6dce7;
+    color: #2b3444;
+}
+.login-card .form-control-lg {
+    padding: .6rem .9rem;
+    font-size: .98rem;
+    line-height: 1.4;
+}
+.login-card .form-control::placeholder {
+    color: #9aa3b2;
+}
+.form-control:focus {
+    border-color: #4c7ac9;
+    box-shadow: 0 0 0 .2rem rgba(76, 122, 201, .18);
+}
+
+/* Fila recordarme / olvidé contraseña */
+.login-card .form-check-label,
+.login-wrapper a.small,
+.login-card a.small {
+    font-size: .82rem;
+}
+
+/* Botón de login */
+.login-card .btn-primary,
+.btn-primary {
+    background-color: #4266ad;
+    border-color: #3a5fa0;
+    border-radius: 8px;
+    padding: .62rem;
+    font-weight: 500;
+}
+.btn-primary:hover,
+.btn-primary:focus {
+    background-color: #3a5fa0;
+    border-color: #2f4d84;
+}
+
+/* Pie */
+.login-wrapper > p.small {
+    font-size: .8rem;
+}
+
+/* Responsive: móviles */
+@media (max-width: 420px) {
+    .login-card .card-body {
+        padding: 1.35rem 1.25rem 1.6rem !important;
+    }
+    .login-logo {
+        max-width: 168px;
+    }
+    body.login-bg {
+        padding: 1rem 0;
+    }
+}

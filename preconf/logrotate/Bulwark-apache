@@ -1,0 +1,32 @@
+# NOTE: FreeBSD uses newsyslog(8), not logrotate.
+# Install logrotate from ports (sysutils/logrotate) or adapt to newsyslog.conf.d/
+
+# Sentora Panel logs
+/var/bulwark/logs/sentora*.log /var/bulwark/logs/daemon*.log {
+       su root wheel
+       weekly
+       missingok
+       rotate 4
+       compress
+       delaycompress
+       create 640 root wheel
+       sharedscripts
+       postrotate
+               service apache24 reload > /dev/null 2>&1 || true
+       endscript
+}
+
+# Sentora User Domain logs
+/var/bulwark/logs/domains/*/*access.log /var/bulwark/logs/domains/*/*bandwidth.log /var/bulwark/logs/domains/*/*error.log {
+       su root wheel
+       weekly
+       missingok
+       rotate 4
+       compress
+       delaycompress
+       create 640 root wheel
+       sharedscripts
+       postrotate
+               service apache24 reload > /dev/null 2>&1 || true
+       endscript
+}

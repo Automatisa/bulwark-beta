@@ -1,0 +1,249 @@
+<div class="zmodule_content panel" id="zmodule_header_<@ ModuleName @>">
+    <div class="card-header">
+        <img src="<@ ModuleIcon @>" width="35" height="35" border="0" alt="<@ ModuleName @>">
+
+        <div class="zmodule_title">
+            <@ ModuleName @>
+        </div>
+
+        <div class="zmodule_desc" id="zmodule_desc_<@ ModuleName @>"><@ ModuleDesc @></div>
+
+    </div>
+
+    <div class="zgrid_wrapper">
+
+    <% if ModuleMode %>
+        <% loop FlashDebugMessages %><div class="alert alert-info"><& debug &></div><% endloop %>
+    <% endif %>
+    
+    <% loop FlashErrorMessages %><div class="alert alert-danger"><& error &></div><% endloop %>
+    
+    
+    <% if isIndex %>
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=CreateProtection" class="button-loader btn btn-success btn-sm"><: Create :></a></div>
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <div class="table-responsive"><table class="table table-striped table-bordered" style="margin-top: 20px; width:100%; margin-left:auto; margin-right:auto;">
+        <tr>
+            <td style="text-align: center;"><strong><: Protected Directory :></strong></td>
+            <td style="text-align: center;"><strong><: Message :></strong></td>
+            <td style="text-align: center;"><strong><: Created On :></strong></td>
+            <td style="text-align: center;"><strong><: Manage :></strong></td>
+        </tr>
+        <% loop FileList %>
+        <tr>
+            <td><& x_htpasswd_file_target &></td>
+            <td><& x_htpasswd_file_message &></td>
+            <td><& x_htpasswd_file_created &></td>
+            <td>
+                <a href="/?module=protected_directories&control=EditProtection&id=<& x_htpasswd_file_id &>" class="button-loader btn btn-primary btn-sm"><: Edit :></a>
+                <a href="/?module=protected_directories&control=DeleteProtection&id=<& x_htpasswd_file_id &>" class="button-loader btn btn-danger btn-sm"><: Delete :></a>
+            </td>
+        </tr>
+        <% endloop %>
+    </table>
+</div><!-- /table-responsive -->
+    <% endif %>
+    
+    
+    
+    <% if isEditProtection %>
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=Index" class="button-loader btn btn-secondary"><: Back :></a>
+    </div>
+
+    <div class="clearfix">&nbsp;</div>
+    <form action="/?module=protected_directories&control=EditProtection&action=EditProtection&id=<@ Id @>" method="post" name="EditProtection">
+        <div class="table-responsive"><table class="table table-striped table-bordered" style="width:700px; margin-left:auto; margin-right:auto;">
+            <tr>
+                <td><strong><: Protected Directory :></strong></td>
+                <td><strong><: Message :></strong></td>
+                <td><strong><: Created On :></strong></td>
+                <td>&nbsp;</td>
+            </tr>
+            <% loop File %>
+            <tr>
+                <td><& x_htpasswd_file_target &></td>
+                <td>
+                    <input type="text" name="message" value="<& x_htpasswd_file_message &>" class="form-control form-control-sm">
+                </td>
+                <td style="white-space: nowrap;"><& x_htpasswd_file_created &></td>
+                <td>
+                    <input type="submit" name="submitCreateProtection" value="Update" class="btn btn-primary">
+                    <@ CSFR_Tag @>
+                </td>
+            </tr>
+            <% endloop %>
+        </table>
+</div><!-- /table-responsive -->
+    </form>
+    
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=CreateUser&id=<@ Id @>" class="button-loader btn btn-success btn-sm"><: Create :></a>
+    </div>
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <div class="table-responsive"><table class="table table-striped table-bordered" style="margin-top: 20px; width:100%; margin-left:auto; margin-right:auto;">
+        <tr>
+            <td style="text-align: center;"><strong><: Username :></strong></td>
+            <td style="text-align: center;"><strong><: Created On :></strong></td>
+            <td style="text-align: center;"><strong><: Manage :></strong></td>
+        </tr>
+        <% loop UserFileList %>
+        <tr>
+            
+            <td><& x_htpasswd_user_username &></td>
+            <td><& x_htpasswd_user_created &></td>
+            <td>
+                <a href="/?module=protected_directories&control=DeleteUser&id=<& x_htpasswd_file_id &>&userid=<& x_htpasswd_user_id &>" class="button-loader btn btn-danger btn-sm"><: Delete :></a>
+                <a href="/?module=protected_directories&control=EditUser&id=<& x_htpasswd_file_id &>&userid=<& x_htpasswd_user_id &>" class="button-loader btn btn-primary btn-sm"><: Edit :></a>
+            </td>
+        </tr>
+        <% endloop %>
+    </table>
+</div><!-- /table-responsive -->
+    
+    <% endif %>
+    
+    <% if isCreateProtection %>
+    <div><h3><: Protect A Directory :></h3></div>
+    <div class="clearfix">&nbsp;</div>
+    
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=Index" class="button-loader btn btn-secondary"><: Back :></a>
+    </div>
+
+    <div class="clearfix">&nbsp;</div>
+    
+    <p class="help-block mb-3">
+        <: Password-protection only works inside a domain's :> <code>public_html</code>.
+        <: Choose a domain and, optionally, a subfolder to protect. :>
+    </p>
+
+    <form action="/?module=protected_directories&control=CreateProtection&action=CreateProtection" method="post" name="CreateProtection">
+        <div class="mb-3">
+            <label class="form-label"><: Domain :></label>
+            <select name="inDomain" class="form-select" style="max-width:560px;" required>
+                <@ DomainOptions @>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label class="form-label"><: Folder inside public_html :> <small class="text-muted">(<: optional :>)</small></label>
+            <div class="input-group" style="max-width:560px;">
+                <span class="input-group-text">public_html/</span>
+                <input type="text" name="inSubpath" class="form-control" placeholder="private">
+            </div>
+            <small class="help-block"><: Leave empty to protect the whole site. The folder must already exist. :></small>
+        </div>
+        <div class="mb-3">
+            <label class="form-label"><: Message: :></label>
+            <input type="text" name="message" class="form-control" style="max-width:560px;" placeholder="Restricted area">
+        </div>
+        <input type="submit" name="submitCreateProtection" value="<: Submit :>" class="btn btn-primary">
+        <@ CSFR_Tag @>
+    </form>
+    <% endif %>
+    
+    <% if isDeleteProtection %>
+    <div><: Please confirm the delete request: :></div>
+    <form action="/?module=protected_directories&control=DeleteProtection&action=DeleteProtection&id=<@ Id @>" method="post" name="DeleteProtection">
+        <input type="submit" name="submitDeleteProtection" value="<: Submit :>" class="btn btn-primary">
+        <@ CSFR_Tag @>
+    </form>
+    <% endif %>
+
+    <% if isCreateUser %>
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=EditProtection&id=<@ Id @>" class="button-loader btn btn-secondary"><: Back :></a>
+    </div>
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <div class="table-responsive"><table class="table table-striped table-bordered" style="width:700px; margin-left:auto; margin-right:auto;">
+        <tr>
+            <td><strong><: Protected Directory :></strong></td>
+            <td><strong><: Message :></strong></td>
+            <td><strong><: Created On :></strong></td>
+        </tr>
+        <% loop File %>
+        <tr>
+            <td><& x_htpasswd_file_target &></td>
+            <td>
+                <& x_htpasswd_file_message &>
+            </td>
+            <td style="white-space: nowrap;"><& x_htpasswd_file_created &></td>
+        </tr>
+        <% endloop %>
+    </table>
+</div><!-- /table-responsive -->
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <form action="/?module=protected_directories&control=CreateUser&action=CreateUser&id=<@ Id @>" method="post" name="CreateUser">
+        <div class="mb-3">
+            <label class="form-label"><: Username: :></label>
+            <input type="text" name="username" class="form-control" style="max-width:320px;" autocomplete="off" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label"><: Password: :></label>
+            <input type="password" name="password" class="form-control" style="max-width:320px;" autocomplete="new-password" required>
+        </div>
+        <input type="submit" name="submitCreateUser" value="Submit" class="btn btn-primary">
+        <@ CSFR_Tag @>
+    </form>
+    <% endif %>
+    
+    <% if isEditUser %>
+    <div class="float-end">
+        <a href="/?module=protected_directories&control=EditProtection&id=<@ Id @>" class="button-loader btn btn-secondary"><: Back :></a>
+    </div>
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <div class="table-responsive"><table class="table table-striped table-bordered" style="width:700px; margin-left:auto; margin-right:auto;">
+            <tr>
+                <td><strong><: Protected Directory :></strong></td>
+                <td><strong><: Message :></strong></td>
+                <td><strong><: Created On :></strong></td>
+            </tr>
+            <% loop File %>
+            <tr>
+                <td><& x_htpasswd_file_target &></td>
+                <td>
+                    <& x_htpasswd_file_message &>
+                </td>
+                <td style="white-space: nowrap;"><& x_htpasswd_file_created &></td>
+            </tr>
+            <% endloop %>
+        </table>
+</div><!-- /table-responsive -->
+    
+    <div class="clearfix">&nbsp;</div>
+    
+    <form action="/?module=protected_directories&control=EditUser&action=UpdateUser&id=<@ Id @>&userid=<@ UserId @>" method="post" name="EditUser">
+        <div class="mb-3">
+            <label class="form-label"><: Username: :></label>
+            <div><% loop User %><strong><& x_htpasswd_user_username &></strong><% endloop %></div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label"><: Password: :></label>
+            <input type="password" name="password" class="form-control" style="max-width:320px;" autocomplete="new-password" required>
+        </div>
+        <input type="submit" name="submitEditUser" value="<: Submit :>" class="btn btn-primary">
+        <@ CSFR_Tag @>
+    </form>
+    <% endif %>
+
+    <% if isDeleteUser %>
+        <div><: Please confirm the user delete request: :></div>
+        <form action="/?module=protected_directories&control=DeleteUser&action=DeleteUser&id=<@ Id @>&userid=<@ UserId @>" method="post" name="DeleteUser">
+            <input type="submit" name="submitDeleteUser" value="<: Submit :>" class="btn btn-primary">
+            <@ CSFR_Tag @>
+        </form>
+    <% endif %>
+
+    </div><!-- /zgrid_wrapper -->
+</div>
