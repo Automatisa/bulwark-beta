@@ -1887,6 +1887,14 @@ if [ -f "$PANEL_PATH/bin/bulwark_maillimit_helper" ]; then
     chmod 2755          "$PANEL_PATH/bin/bulwark_maillimit_helper"
 fi
 
+# Reto ACME (HTTP-01) del certificado del PANEL: el webroot ($PANEL_PATH) es root:www y el
+# panel corre como 'bulwark', que NO puede crear .well-known ahí -> la emisión de Let's Encrypt
+# del panel fallaba al escribir el token del reto. Se pre-crea el directorio del reto escribible
+# por el panel (bulwark:www, setgid). Apache lo sirve por HTTP sin redirección a HTTPS.
+mkdir -p "$PANEL_PATH/.well-known/acme-challenge"
+chown -R bulwark:www "$PANEL_PATH/.well-known"
+chmod 2775 "$PANEL_PATH/.well-known" "$PANEL_PATH/.well-known/acme-challenge"
+
 # etc/tmp: PHP escribe aquí (cachés, etc.)
 chown -R www:www "$PANEL_PATH/etc/tmp"
 chmod -R 755 "$PANEL_PATH/etc/tmp"

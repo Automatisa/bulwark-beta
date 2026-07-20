@@ -1769,9 +1769,12 @@ class module_controller extends ctrl_module {
 			$line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
 			$line .= "SSLHonorCipherOrder on" . fs_filehandler::NewLine();
 			$line .= "SSLCipherSuite \"ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384\"" . fs_filehandler::NewLine();			
-			$line .= "SSLCertificateFile " . $certlocation . "cert.pem" . fs_filehandler::NewLine();
+			// fullchain.pem (hoja + intermedio) para que Apache envíe la cadena COMPLETA al
+			// cliente. SSLCACertificateFile NO sirve el intermedio a los navegadores (es para
+			// verificar certs de cliente) -> con solo cert.pem la cadena quedaba incompleta
+			// (curl/openssl: "unable to get local issuer certificate", verify=20).
+			$line .= "SSLCertificateFile " . $certlocation . "fullchain.pem" . fs_filehandler::NewLine();
 			$line .= "SSLCertificateKeyFile " . $certlocation . "private.pem" . fs_filehandler::NewLine();
-			$line .= "SSLCACertificateFile " . $certlocation . "chain.pem" . fs_filehandler::NewLine();
 			$line .= "# Made from Sencrypt - " . $sub_module . " - end" . fs_filehandler::NewLine();
 
 			$port = 443;

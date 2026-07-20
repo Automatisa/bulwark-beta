@@ -425,10 +425,12 @@ class Lescript
         $tmpConfMeta = stream_get_meta_data($tmpConf);
         $tmpConfPath = $tmpConfMeta["uri"];
 
-        # workaround to get SAN working
+        # workaround to get SAN working. RANDFILE apunta a una ruta ESCRIBIBLE por el usuario
+        # del panel (el cert dir), no a $HOME/.rnd: el usuario 'bulwark' tiene HOME=/nonexistent
+        # y OpenSSL fallaba con "random number generator::Cannot open file" al generar el CSR.
+        $randFile = rtrim($this->getDomainPath($domain), '/') . '/.rnd';
         fwrite($tmpConf,
-            'HOME = .
-RANDFILE = $ENV::HOME/.rnd
+            'RANDFILE = ' . $randFile . '
 [ req ]
 default_bits = 2048
 default_keyfile = privkey.pem
@@ -441,13 +443,17 @@ basicConstraints = CA:FALSE
 subjectAltName = ' . $san . '
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment');
 
+        # DN: solo campos NO vacíos. Let's Encrypt ignora el DN (solo usa el SAN), pero incluir
+        # ST/C vacíos hacía fallar OpenSSL con "asn1 encoding routines::string too short".
+        $dn = array("CN" => $domain, "O" => "Unknown");
+        if (is_string($this->state) && strlen(trim($this->state)) > 0) {
+            $dn["ST"] = $this->state;
+        }
+        if (is_string($this->countryCode) && strlen(trim($this->countryCode)) === 2) {
+            $dn["C"] = strtoupper(trim($this->countryCode));
+        }
         $csr = openssl_csr_new(
-            array(
-                "CN" => $domain,
-                "ST" => $this->state,
-                "C" => $this->countryCode,
-                "O" => "Unknown",
-            ),
+            $dn,
             $privateKey,
             array(
                 "config" => $tmpConfPath,
