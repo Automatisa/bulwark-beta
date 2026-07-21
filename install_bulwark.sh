@@ -640,11 +640,14 @@ smtpd_sasl_type              = dovecot
 smtpd_sasl_path              = private/auth
 broken_sasl_auth_clients     = yes
 
-# TLS (comentado hasta tener certificado real)
+# TLS: usa el cert autofirmado de recuperacion del panel (existe antes de arrancar los
+# servicios; ver seccion "recovery"). Sin cert, postfix responde "454 TLS not available"
+# al STARTTLS y el envio autenticado por 587 falla. El admin puede apuntarlo luego al cert
+# Let's Encrypt del panel si lo desea.
 smtp_tls_security_level  = may
 smtpd_tls_security_level = may
-# smtpd_tls_key_file  = /usr/local/etc/ssl/bulwark/mail.key
-# smtpd_tls_cert_file = /usr/local/etc/ssl/bulwark/mail.crt
+smtpd_tls_key_file  = /usr/local/etc/bulwark/panel/recovery/selfsigned.key
+smtpd_tls_cert_file = /usr/local/etc/bulwark/panel/recovery/selfsigned.crt
 
 # Restricciones
 smtpd_helo_required = yes
@@ -728,7 +731,11 @@ cat > "$PANEL_CONF/dovecot2/dovecot.conf" <<DOVCF
 ## Dovecot config — FreeBSD / Bulwark
 listen = *
 disable_plaintext_auth = no
-ssl = no
+# TLS con el cert autofirmado de recuperacion (existe antes de arrancar). Sin ssl=yes+cert,
+# dovecot no ofrece STARTTLS ("STARTTLS not available") y los clientes IMAP/POP con TLS fallan.
+ssl = yes
+ssl_cert = </usr/local/etc/bulwark/panel/recovery/selfsigned.crt
+ssl_key = </usr/local/etc/bulwark/panel/recovery/selfsigned.key
 log_timestamp = %Y-%m-%d %H:%M:%S
 protocols = imap pop3 lmtp sieve
 auth_mechanisms = plain login
