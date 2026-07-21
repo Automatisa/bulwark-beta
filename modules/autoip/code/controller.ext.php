@@ -47,7 +47,8 @@ class module_controller extends ctrl_module {
 
     static function getDetectedIPs() {
         self::requireAdmin();
-        $serverip = ctrl_options::GetOption('server_ip');
+        $serverip  = ctrl_options::GetOption('server_ip');
+        $serverip6 = ctrl_options::GetOption('server_ip6');
         $ips = [];
 
         $out = [];
@@ -73,6 +74,25 @@ class module_controller extends ctrl_module {
                     'ai_isactive' => ($ip === $serverip) ? '✓' : '',
                 ];
             }
+            // IPv6 (inet6): se ignoraba antes -> la IPv6 del sistema no aparecía. Excluye
+            // link-local (fe80::) y loopback (::1). Marca activa contra server_ip6.
+            if ($iface !== ''
+                && preg_match('#^\s+inet6\s+([0-9A-Fa-f:]+)#', $line, $m)
+                && strncasecmp($m[1], 'fe80', 4) !== 0
+                && $m[1] !== '::1'
+                && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+            ) {
+                $ip6 = $m[1];
+                $pub = filter_var($ip6, FILTER_VALIDATE_IP,
+                    FILTER_FLAG_IPV6 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+                $ips[] = [
+                    'ai_iface'    => $iface,
+                    'ai_ip'       => $ip6,
+                    'ai_type'     => $pub ? 'Public (IPv6)' : 'Private (IPv6)',
+                    'ai_typecss'  => $pub ? 'color:green;' : 'color:darkorange;',
+                    'ai_isactive' => ($ip6 === $serverip6) ? '✓' : '',
+                ];
+            }
         }
 
         // Linux fallback
@@ -96,6 +116,23 @@ class module_controller extends ctrl_module {
                         'ai_type'     => $pub ? 'Public' : 'Private',
                         'ai_typecss'  => $pub ? 'color:green;' : 'color:darkorange;',
                         'ai_isactive' => ($ip === $serverip) ? '✓' : '',
+                    ];
+                }
+                if ($iface !== ''
+                    && preg_match('#^\s+inet6\s+([0-9A-Fa-f:]+)/\d+#', $line, $m)
+                    && strncasecmp($m[1], 'fe80', 4) !== 0
+                    && $m[1] !== '::1'
+                    && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+                ) {
+                    $ip6 = $m[1];
+                    $pub = filter_var($ip6, FILTER_VALIDATE_IP,
+                        FILTER_FLAG_IPV6 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+                    $ips[] = [
+                        'ai_iface'    => $iface,
+                        'ai_ip'       => $ip6,
+                        'ai_type'     => $pub ? 'Public (IPv6)' : 'Private (IPv6)',
+                        'ai_typecss'  => $pub ? 'color:green;' : 'color:darkorange;',
+                        'ai_isactive' => ($ip6 === $serverip6) ? '✓' : '',
                     ];
                 }
             }
