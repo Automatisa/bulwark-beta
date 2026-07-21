@@ -22,6 +22,10 @@
                 <th style="width:200px;"><: Server IP (for DNS) :>:</th>
                 <td><strong><& ai_oldip_vc &></strong></td>
             </tr>
+            <tr>
+                <th style="width:200px;"><: Server IPv6 (for DNS) :>:</th>
+                <td><strong><& ai_oldip6_vc &></strong></td>
+            </tr>
         </table>
         <% endloop %>
         <% endif %>
@@ -29,7 +33,7 @@
 
     <div class="zform_wrapper">
         <h2><: Internal IPs :></h2>
-        <p><small>IPv4 addresses bound to this server's network interfaces. Click Select to load an IP into the Server IP field below.</small></p>
+        <p><small>IPv4 and IPv6 addresses bound to this server's network interfaces. Click Select to load an IP into the Server IP field below.</small></p>
         <% if DetectedIPs %>
         <table class="zform table table-striped">
             <tr>

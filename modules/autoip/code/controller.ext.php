@@ -28,9 +28,14 @@ class module_controller extends ctrl_module {
         global $zdbh;
         $n = $zdbh->query("SELECT COUNT(*) FROM x_autoip");
         if ($n->fetchColumn() > 0) {
-            $serverip = ctrl_options::GetOption('server_ip');
-            $syncip   = self::$lastSyncIP !== null ? self::$lastSyncIP : $serverip;
-            return [['ai_oldip_vc' => $serverip, 'ai_syncip_vc' => $syncip]];
+            $serverip  = ctrl_options::GetOption('server_ip');
+            $serverip6 = (string)ctrl_options::GetOption('server_ip6');
+            $syncip    = self::$lastSyncIP !== null ? self::$lastSyncIP : $serverip;
+            return [[
+                'ai_oldip_vc'   => $serverip,
+                'ai_oldip6_vc'  => ($serverip6 !== '' ? $serverip6 : '—'),
+                'ai_syncip_vc'  => $syncip,
+            ]];
         }
         return false;
     }
