@@ -493,10 +493,6 @@ GRANT SELECT ON bulwark_postfix.* TO 'postfix'@'localhost';
 CREATE USER IF NOT EXISTS 'roundcube'@'localhost' IDENTIFIED BY '$ROUNDCUBE_DB_PASS';
 GRANT ALL PRIVILEGES ON bulwark_roundcube.* TO 'roundcube'@'localhost';
 CREATE USER IF NOT EXISTS 'proftpd'@'localhost' IDENTIFIED BY '$PROFTPD_DB_PASS';
--- Necesita INSERT/UPDATE/DELETE (no solo SELECT): mod_sql actualiza el contador de logins
--- (SQLLog PASS updatecount -> UPDATE ftpuser) y mod_quotatab_sql escribe en ftpquotatallies.
--- Con solo SELECT, tras autenticar da "(1142) INSERT command denied ... ftpquotatallies",
--- error irrecuperable de mod_sql, y la sesión FTP cae al terminar el login.
 GRANT SELECT, INSERT, UPDATE, DELETE ON bulwark_proftpd.* TO 'proftpd'@'localhost';
 FLUSH PRIVILEGES;
 "
