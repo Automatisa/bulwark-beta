@@ -930,7 +930,10 @@ cat > /usr/local/etc/opendkim/TrustedHosts <<DKIMTH
 localhost
 $SERVER_IP
 DKIMTH
-chown opendkim:opendkim /usr/local/etc/opendkim/TrustedHosts
+# mailnull (NO opendkim): el daemon corre como mailnull y debe poder leerlo; si es
+# opendkim:opendkim 640, mailnull no lo lee -> "TrustedHosts: dkimf_db_open(): Permission
+# denied" y NO firma el correo saliente (queda sin DKIM).
+chown mailnull:mailnull /usr/local/etc/opendkim/TrustedHosts
 chmod 640 /usr/local/etc/opendkim/TrustedHosts
 
 # En FreeBSD el servicio se llama milter-opendkim y lee /usr/local/etc/mail/opendkim.conf
