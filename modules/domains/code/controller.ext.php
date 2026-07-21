@@ -1129,8 +1129,12 @@ class module_controller extends ctrl_module
             }
         }
 
-        // DNS: registros AAAA (@ y www) + Apache rebuild
-        self::setDomainAAAA($vhostid, $new6);
+        // DNS: registros AAAA (@ y www) + Apache rebuild.
+        // Compartida (sin IPv6 dedicada): si el sistema tiene server_ip6, el dominio usa la IPv6
+        // del sistema (AAAA = server_ip6), igual que la IPv4 compartida usa server_ip. Sin
+        // server_ip6 configurada -> se queda sin AAAA (solo IPv4).
+        $effective6 = ($new6 !== '') ? $new6 : (string)ctrl_options::GetOption('server_ip6');
+        self::setDomainAAAA($vhostid, $effective6);
         // Herencia: los subdominios de este dominio siguen las IP del padre (A/AAAA en la zona del padre)
         self::propagateIPToSubdomains($vhostid, $domain);
         ctrl_options::SetSystemOption('apache_changed', 'true');
@@ -1141,8 +1145,10 @@ class module_controller extends ctrl_module
         if ($current !== '' && $current !== $new6)  { self::syncDomainSpf($vhostid, $current, false); }
         try { privilege::run('mail_ip_sync'); } catch (Exception $e) {}
 
+        $ip6label = ($new6 !== '') ? $new6
+                  : (($effective6 !== '') ? 'compartida del sistema (' . $effective6 . ')' : 'ninguna (solo IPv4)');
         $_SESSION['domains_ip_flash'] = ['ok', 'IPv6 del dominio ' . $domain . ' actualizada a '
-            . ($new6 === '' ? 'ninguna (solo IPv4)' : $new6) . ' (sus subdominios la heredan). Los cambios se aplican en el próximo ciclo del daemon.'];
+            . $ip6label . ' (sus subdominios la heredan). Los cambios se aplican en el próximo ciclo del daemon.'];
         return true;
     }
 
@@ -1263,6 +1269,13 @@ class module_controller extends ctrl_module
         if ($current6 !== '' && !in_array($current6, $options6, true)) { $options6[] = $current6; }
         sort($options6);
 
+        // Etiqueta de la opción "compartida" IPv6: si el sistema tiene IPv6 (server_ip6), el
+        // dominio puede usar la IPv6 del sistema (AAAA = server_ip6); si no, es "ninguna".
+        $sysip6 = (string)ctrl_options::GetOption('server_ip6');
+        $ip6SharedLabel = ($sysip6 !== '')
+            ? 'Compartida del sistema (' . htmlspecialchars($sysip6, ENT_QUOTES) . ')'
+            : 'Ninguna (solo IPv4)';
+
         $csrf = self::getCSFR_Tag();
         $h = '';
         if (!empty($_SESSION['domains_ip_flash'])) {
@@ -1287,7 +1300,7 @@ class module_controller extends ctrl_module
             . '<tr><th style="width:160px;">IPv4 del sitio:</th><td>'
             . $mkSelect('inDomainIP', $current, $options, 'Compartida (IP del sistema)') . '</td></tr>'
             . '<tr><th>IPv6 del sitio:</th><td>'
-            . $mkSelect('inDomainIP6', $current6, $options6, 'Ninguna (solo IPv4)') . '</td></tr>'
+            . $mkSelect('inDomainIP6', $current6, $options6, $ip6SharedLabel) . '</td></tr>'
             . '<tr><th></th><td><button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-hdd-network me-1"></i>Guardar IPs</button></td></tr>'
             . '</table>'
             . '<small class="text-muted">IPv4 dedicadas de tu paquete: <strong>' . $qtxt . '</strong> · en uso: ' . count($userIPs)
