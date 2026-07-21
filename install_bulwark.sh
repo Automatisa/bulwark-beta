@@ -493,7 +493,11 @@ GRANT SELECT ON bulwark_postfix.* TO 'postfix'@'localhost';
 CREATE USER IF NOT EXISTS 'roundcube'@'localhost' IDENTIFIED BY '$ROUNDCUBE_DB_PASS';
 GRANT ALL PRIVILEGES ON bulwark_roundcube.* TO 'roundcube'@'localhost';
 CREATE USER IF NOT EXISTS 'proftpd'@'localhost' IDENTIFIED BY '$PROFTPD_DB_PASS';
-GRANT SELECT ON bulwark_proftpd.* TO 'proftpd'@'localhost';
+-- Necesita INSERT/UPDATE/DELETE (no solo SELECT): mod_sql actualiza el contador de logins
+-- (SQLLog PASS updatecount -> UPDATE ftpuser) y mod_quotatab_sql escribe en ftpquotatallies.
+-- Con solo SELECT, tras autenticar da "(1142) INSERT command denied ... ftpquotatallies",
+-- error irrecuperable de mod_sql, y la sesión FTP cae al terminar el login.
+GRANT SELECT, INSERT, UPDATE, DELETE ON bulwark_proftpd.* TO 'proftpd'@'localhost';
 FLUSH PRIVILEGES;
 "
 ok "Usuarios de DB creados"
@@ -1319,12 +1323,16 @@ info "Configurando ProFTPD..."
 PROFTPD_CONF_DIR="/usr/local/etc/bulwark/proftpd"
 mkdir -p "$PROFTPD_CONF_DIR"
 
-# Config principal (desde preconf, reemplazando placeholders)
+# Config principal (desde preconf del repo, reemplazando placeholders).
+# OJO: leer de $PANEL_PATH/preconf (NO de $PANEL_CONF): $PANEL_CONF/proftpd/proftpd-mysql.conf
+# es EL MISMO fichero que el destino (preconf ya se copió a $PANEL_CONF), y "sed SRC > DEST"
+# con SRC==DEST TRUNCA el fichero antes de leerlo -> quedaba VACÍO -> ProFTPD sin auth SQL
+# (ningún login FTP funcionaba).
 sed \
     -e "s|!SQL_PASSWORD!|$PROFTPD_DB_PASS|g" \
     -e "s|!ADMIN_EMAIL!|root@localhost|g" \
     -e "s|!SQL_MIN_ID!|500|g" \
-    "$PANEL_CONF/proftpd/proftpd-mysql.conf" \
+    "$PANEL_PATH/preconf/proftpd/proftpd-mysql.conf" \
     > "$PROFTPD_CONF_DIR/proftpd-mysql.conf"
 
 # Incluir TLS y apuntar al config Bulwark desde el config global de FreeBSD
