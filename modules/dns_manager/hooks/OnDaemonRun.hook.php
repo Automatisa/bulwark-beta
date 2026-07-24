@@ -555,8 +555,10 @@ function ExtractDSRecordsHook()
         $keyFiles = glob($keyDir . '/K' . $domain . '.+*.key');
         if (empty($keyFiles)) continue;
 
-        $dsText = null;
-        $keyTag = null;
+        $dsText     = null;
+        $keyTag     = null;
+        $dnskeyB64  = null;   // clave pública KSK (para registradores que piden DNSKEY, p.ej. OVH)
+        $dnskeyAlgo = null;
 
         foreach ($keyFiles as $keyFile) {
             $content = @file_get_contents($keyFile);
@@ -592,18 +594,23 @@ function ExtractDSRecordsHook()
 
             // DS digest: SHA-256 of (wire_name || RDATA) — digest type 2
             $digest = strtoupper(hash('sha256', $wire . $rdata));
-            $dsText = "$tag $algorithm 2 $digest";
-            $keyTag = $tag;
+            $dsText     = "$tag $algorithm 2 $digest";
+            $keyTag     = $tag;
+            $dnskeyB64  = $keyB64;      // clave pública tal cual (base64) para el formato DNSKEY
+            $dnskeyAlgo = $algorithm;
             break;
         }
 
         if ($dsText !== null) {
             $upd = $zdbh->prepare(
-                "UPDATE x_dns_dnssec SET dd_ds_txt=:ds, dd_keytag_in=:tag WHERE dd_id_pk=:id"
+                "UPDATE x_dns_dnssec SET dd_ds_txt=:ds, dd_keytag_in=:tag,
+                        dd_dnskey_tx=:dnskey, dd_algo_in=:algo WHERE dd_id_pk=:id"
             );
-            $upd->bindParam(':ds',  $dsText);
-            $upd->bindParam(':tag', $keyTag);
-            $upd->bindParam(':id',  $ddId);
+            $upd->bindParam(':ds',     $dsText);
+            $upd->bindParam(':tag',    $keyTag);
+            $upd->bindParam(':dnskey', $dnskeyB64);
+            $upd->bindParam(':algo',   $dnskeyAlgo);
+            $upd->bindParam(':id',     $ddId);
             $upd->execute();
             echo "  DS record for $domain: $dsText" . fs_filehandler::NewLine();
         }

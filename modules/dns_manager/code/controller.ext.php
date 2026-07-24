@@ -587,7 +587,8 @@ class module_controller extends ctrl_module
 
         // DNSSEC zone signing
         $dnssecRow = $zdbh->prepare(
-            "SELECT dd_enabled_in, dd_ds_txt, dd_keytag_in FROM x_dns_dnssec WHERE dd_vhost_fk=:did LIMIT 1"
+            "SELECT dd_enabled_in, dd_ds_txt, dd_keytag_in, dd_dnskey_tx, dd_algo_in
+               FROM x_dns_dnssec WHERE dd_vhost_fk=:did LIMIT 1"
         );
         $dnssecRow->bindParam(':did', $domainID);
         $dnssecRow->execute();
@@ -595,6 +596,9 @@ class module_controller extends ctrl_module
 
         $dnssecEnabled = $dnssec && (int)$dnssec['dd_enabled_in'] === 1;
         $dnssecDs      = $dnssec ? $dnssec['dd_ds_txt']    : null;
+        $dnssecKeytag  = $dnssec ? $dnssec['dd_keytag_in'] : null;
+        $dnssecKey     = $dnssec ? ($dnssec['dd_dnskey_tx'] ?? null) : null;
+        $dnssecAlgo    = $dnssec && $dnssec['dd_algo_in'] ? (int)$dnssec['dd_algo_in'] : 13;
         $dnssecPending = $dnssecEnabled && empty($dnssecDs);
 
         $line .= '<div class="zgrid_wrapper">';
@@ -607,15 +611,30 @@ class module_controller extends ctrl_module
             $line .= '<p><span class="badge bg-info">Activando&hellip;</span> BIND está generando las claves (&lt;5 min)</p>';
             $line .= '<p style="color:#777;font-size:13px">El registro DS aparecerá aquí en cuanto el daemon lo detecte. Mientras tanto, DNSSEC <b>no está activo en internet</b> — no registres nada aún en tu registrador.</p>';
         } else {
+            $algoName = ($dnssecAlgo === 13) ? 'ECDSAP256SHA256' : ('alg ' . $dnssecAlgo);
+            $keytagTxt = $dnssecKeytag !== null ? (int)$dnssecKeytag : '';
             $line .= '<p><span class="badge bg-success">Activo</span></p>';
-            $line .= '<p style="margin-top:8px"><strong>Registro DS</strong> — copia este valor en el panel de tu registrador de dominio:</p>';
-            $line .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:8px" id="dnssecDsValue">';
+            $line .= '<p style="margin-top:8px;color:#555;font-size:13px">Registra estos datos en tu registrador de dominio. Según el registrador te pedirá el <b>DS</b> o la <b>DNSKEY</b> — usa el que encaje con su formulario (los dos representan la misma clave).</p>';
+
+            // ── Formato 1: registro DS (digest) — la mayoría de registradores ──
+            $line .= '<p style="margin-top:12px"><strong>Opción A — Registro DS</strong> <span style="color:#777;font-size:12px">(campo único; el más habitual)</span></p>';
+            $line .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:6px" id="dnssecDsValue">';
             $line .= htmlspecialchars($dnssecDs, ENT_QUOTES, 'UTF-8');
             $line .= '</div>';
-            $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="dnssecCopyDS()">';
-            $line .= '<i class="bi bi-clipboard"></i> Copiar DS</button>';
-            $line .= '<script>function dnssecCopyDS(){var t=document.getElementById("dnssecDsValue").innerText;navigator.clipboard?navigator.clipboard.writeText(t):prompt("Copia este DS record:",t);}</script>';
-            $line .= '<p style="margin-top:10px;color:#777;font-size:12px"><b>Algoritmo:</b> 13 (ECDSAP256SHA256) &mdash; <b>Tipo digest:</b> 2 (SHA-256)</p>';
+            $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="dnssecCopy(\'dnssecDsValue\')"><i class="bi bi-clipboard"></i> Copiar DS</button>';
+            $line .= '<p style="margin-top:6px;color:#777;font-size:12px">Campos sueltos &rarr; <b>Key tag:</b> ' . htmlspecialchars((string)$keytagTxt, ENT_QUOTES) . ' &middot; <b>Algoritmo:</b> ' . $dnssecAlgo . ' (' . $algoName . ') &middot; <b>Digest:</b> 2 (SHA-256)</p>';
+
+            // ── Formato 2: DNSKEY (clave pública) — p.ej. OVH ──
+            if (!empty($dnssecKey)) {
+                $line .= '<p style="margin-top:14px"><strong>Opción B — DNSKEY</strong> <span style="color:#777;font-size:12px">(registradores como OVH: piden Key tag, Flag, Algoritmo y clave pública)</span></p>';
+                $line .= '<p style="margin:4px 0;color:#777;font-size:12px"><b>Key tag:</b> ' . htmlspecialchars((string)$keytagTxt, ENT_QUOTES) . ' &middot; <b>Flag:</b> 257 &middot; <b>Algoritmo:</b> ' . $dnssecAlgo . ' (' . $algoName . ')</p>';
+                $line .= '<p style="margin:4px 0 2px;color:#555;font-size:12px">Clave pública (base64):</p>';
+                $line .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:6px" id="dnssecKeyValue">';
+                $line .= htmlspecialchars($dnssecKey, ENT_QUOTES, 'UTF-8');
+                $line .= '</div>';
+                $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="dnssecCopy(\'dnssecKeyValue\')"><i class="bi bi-clipboard"></i> Copiar clave pública</button>';
+            }
+            $line .= '<script>function dnssecCopy(id){var t=document.getElementById(id).innerText.trim();navigator.clipboard?navigator.clipboard.writeText(t):prompt("Copia este valor:",t);}</script>';
         }
 
         // Toggle button

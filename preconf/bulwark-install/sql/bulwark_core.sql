@@ -210,6 +210,8 @@ CREATE TABLE `x_dns_dnssec` (
   `dd_enabled_in` tinyint(4) NOT NULL DEFAULT 0,
   `dd_ds_txt` text DEFAULT NULL,
   `dd_keytag_in` int(11) DEFAULT NULL,
+  `dd_dnskey_tx` text DEFAULT NULL COMMENT 'clave publica KSK en base64 (para registradores que piden DNSKEY, p.ej. OVH)',
+  `dd_algo_in` int(11) DEFAULT NULL COMMENT 'numero de algoritmo DNSSEC (13 = ECDSAP256SHA256)',
   `dd_enabled_ts` int(11) DEFAULT NULL,
   PRIMARY KEY (`dd_id_pk`),
   UNIQUE KEY `uq_dd_vhost` (`dd_vhost_fk`)
