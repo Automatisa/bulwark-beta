@@ -65,6 +65,15 @@ if (!$vid) {
     }
     if (!empty($paths['domain_root'])) { fs_director::SetFileSystemPermissions($paths['domain_root'], 0755); }
 
+    // Página de bienvenida: sin un index.*, Apache devuelve 403 (autoindex prohibido) en el
+    // dominio proveedor. Los dominios creados por el panel la reciben vía vhost_dir_add.sh;
+    // el proveedor se crea aquí, así que se copia también.
+    if (!empty($paths['public_html'])) {
+        $welcome = '/usr/local/bulwark/etc/static/pages/welcome.html';
+        $index   = rtrim($paths['public_html'], '/') . '/index.html';
+        if (is_file($welcome) && !is_file($index)) { @copy($welcome, $index); }
+    }
+
     $ins = $zdbh->prepare("INSERT INTO x_vhosts (vh_acc_fk, vh_name_vc, vh_directory_vc, vh_type_in, vh_created_ts)
                            VALUES (:u, :d, :dir, 1, :t)");
     $ins->execute([':u' => $uid, ':d' => $provider, ':dir' => $destination, ':t' => time()]);

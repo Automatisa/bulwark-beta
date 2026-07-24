@@ -145,15 +145,18 @@ class module_controller extends ctrl_module
 	}
 
 	static function getisPreviewLog() {
-		return !fs_director::CheckForEmptyValue(self::$preview);
+		return isset($_SESSION['ulv_preview']);
 	}
 
 	static function getCurrentLogFile() {
-		return self::$CurrentLogFile;
+		return isset($_SESSION['ulv_preview']) ? $_SESSION['ulv_preview']['file'] : '';
 	}
 
 	static function getPreviewBuffer() {
-		return self::$PreviewBuffer;
+		if (!isset($_SESSION['ulv_preview'])) return '';
+		$buf = $_SESSION['ulv_preview']['buffer'];
+		unset($_SESSION['ulv_preview']); // one-shot: no reaparece al refrescar la página
+		return $buf;
 	}
 
 	static function ActionProcess($mode) {
@@ -185,8 +188,13 @@ class module_controller extends ctrl_module
 				if (!empty($download)) {
 					self::downloadFile($filepath);
 				} else {
-					self::$CurrentLogFile = basename($filepath);
-					self::$PreviewBuffer  = self::tailCustom($filepath, self::$preview_lines);
+					// El framework hace PRG (redirect) tras el POST y las ESTÁTICAS no sobreviven a
+					// la redirección -> el preview salía SIEMPRE en blanco (la descarga funcionaba
+					// porque hace exit() dentro del POST). Se guarda en sesión y se muestra en el GET.
+					$_SESSION['ulv_preview'] = array(
+						'file'   => basename($filepath),
+						'buffer' => (string)self::tailCustom($filepath, self::$preview_lines),
+					);
 				}
 			} else {
 				self::$notfile = true;
