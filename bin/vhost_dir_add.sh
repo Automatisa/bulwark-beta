@@ -61,4 +61,13 @@ chown -R "${SYSUSER}:www" "$WEBBASE"
 find "$WEBBASE" -type d -exec chmod 2750 {} + 2>/dev/null
 find "$WEBBASE" -type f -exec chmod 0640 {} + 2>/dev/null
 
+# Reto ACME (HTTP-01) de Let's Encrypt: el panel corre como 'bulwark' y escribe el token del
+# reto en <public_html>/.well-known/acme-challenge/, pero public_html es 2750 h_USER:www ->
+# bulwark NO puede escribir ahí y la EMISIÓN de certificados de dominios de cliente fallaba
+# (sin cert, sin feedback). Se crea ese subdir escribible por el panel (bulwark:www, setgid),
+# DESPUÉS del chown -R de aislamiento. El resto del web/ del cliente sigue aislado.
+mkdir -p "${WEBBASE}/public_html/.well-known/acme-challenge"
+chown -R bulwark:www "${WEBBASE}/public_html/.well-known"
+chmod 2775 "${WEBBASE}/public_html/.well-known" "${WEBBASE}/public_html/.well-known/acme-challenge"
+
 exit 0
