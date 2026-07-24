@@ -105,6 +105,20 @@ $detectService = function(string $ip) use ($servicePorts): array {
         }
     }
     $port = $servicePorts[$service] ?? 0;
+
+    // Fallback: SSHGuard 2.x en FreeBSD no siempre escribe la línea 'Attack from "IP" on
+    // service X' en auth.log (solo se ve 'Now monitoring'), así que el servicio quedaba en "—".
+    // Se infiere del DEMONIO que registró los fallos de ESA IP en auth.log (sshd -> SSH,
+    // proftpd -> FTP). Los ataques a correo van a maillog (no a auth.log), así que ahí SSHGuard
+    // no aplica desde este parseo; SSH/FTP cubren los bans observados.
+    if ($service === '') {
+        $lines = explode("\n", $chunk);
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            if (strpos($lines[$i], $baseIp) === false) { continue; }
+            if (preg_match('/\b(sshd(?:-session)?|dropbear)\b/i', $lines[$i])) { $service = 'SSH'; $port = 22; break; }
+            if (preg_match('/\b(proftpd|pure-ftpd|vsftpd|ftpd)\b/i', $lines[$i])) { $service = 'FTP'; $port = 21; break; }
+        }
+    }
     return [$service, $port];
 };
 
@@ -123,20 +137,31 @@ if (!empty($sshguardIPs) || true) {
         [$service, $port] = $detectService($ip);
 
         $exists = $zdbh->prepare(
-            "SELECT fa_id_pk FROM x_fw_auto_banned WHERE fa_ip_vc=:ip LIMIT 1"
+            "SELECT fa_active_in, fa_since_ts, fa_service_vc, fa_port_in
+               FROM x_fw_auto_banned WHERE fa_ip_vc=:ip LIMIT 1"
         );
         $exists->bindValue(':ip', $ip);
         $exists->execute();
+        $prev = $exists->fetch(PDO::FETCH_ASSOC);
 
-        if ($exists->fetchColumn()) {
+        if ($prev) {
+            // Preservaciones (evita subtilezas de SQL CASE/placeholders repetidos, se calcula en PHP):
+            //  - fecha del ban: si ya estaba activo, se mantiene la ORIGINAL (antes se reseteaba a
+            //    "ahora" en cada ciclo -> "Baneada desde" salía siempre la hora del último daemon).
+            //  - servicio/puerto: si esta re-sync no detecta servicio (líneas fuera de la ventana de
+            //    auth.log), se conserva el ya detectado en vez de pisarlo con vacío.
+            $sinceTs   = ((int)$prev['fa_active_in'] === 1 && (int)$prev['fa_since_ts'] > 0)
+                       ? (int)$prev['fa_since_ts'] : $now;
+            $svcFinal  = ($service !== '') ? $service : (string)$prev['fa_service_vc'];
+            $portFinal = ($service !== '') ? $port    : (int)$prev['fa_port_in'];
             $upd = $zdbh->prepare(
                 "UPDATE x_fw_auto_banned
                  SET fa_active_in=1, fa_since_ts=:ts, fa_service_vc=:svc, fa_port_in=:port
                  WHERE fa_ip_vc=:ip"
             );
-            $upd->bindValue(':ts',   $now);
-            $upd->bindValue(':svc',  $service);
-            $upd->bindValue(':port', $port);
+            $upd->bindValue(':ts',   $sinceTs);
+            $upd->bindValue(':svc',  $svcFinal);
+            $upd->bindValue(':port', $portFinal);
             $upd->bindValue(':ip',   $ip);
             $upd->execute();
         } else {
