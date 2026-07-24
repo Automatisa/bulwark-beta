@@ -278,6 +278,13 @@ input[type=submit] {
 								</td>
                             </tr>
                             <tr>
+                                <th nowrap="nowrap"><: Password :>:</th>
+                                <td nowrap="nowrap">
+                                    <input name="inPassword" type="password" id="inCreateUserPassword" size="30" autocomplete="new-password" />
+                                    <br /><small><: Optional - leave blank to auto-generate. Min 8 chars with upper/lower/number. :></small>
+                                </td>
+                            </tr>
+                            <tr>
                                 <th nowrap="nowrap"><: Map Database :>:</th>
                                 <td>
                                     <select name="inDatabase" id="inDatabase">

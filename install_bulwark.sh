@@ -259,12 +259,20 @@ pkg install -y dovecot-mysql dovecot-pigeonhole-mysql
 # imapsync — migración de cuentas de correo IMAP externas hacia el panel (módulo imapsync)
 pkg install -y imapsync
 
-# Apache + PHP-FPM + módulos necesarios
+# Apache + PHP-FPM + módulos. Set AMPLIO de extensiones para que apps típicas (PrestaShop,
+# WordPress, Magento, Laravel, Nextcloud...) funcionen sin "missing extension" (p.ej.
+# PrestaShop exige simplexml). Se añaden: simplexml, soap, bcmath, gmp, sodium, xmlreader,
+# tokenizer, exif, fileinfo, bz2, ctype, hash, pcntl, calendar, ftp, gettext, ldap, tidy,
+# sysv*, shmop, phar, ecc.
 pkg install -y apache24 \
     php84 php84-mysqli php84-gd php84-curl \
     php84-mbstring php84-xml php84-zip php84-intl php84-opcache \
     php84-session php84-filter php84-pdo php84-pdo_mysql php84-posix \
-    php84-dom php84-iconv php84-pecl-redis
+    php84-dom php84-iconv php84-pecl-redis \
+    php84-simplexml php84-xmlreader php84-xmlwriter php84-soap php84-bcmath \
+    php84-gmp php84-sodium php84-tokenizer php84-ctype php84-exif php84-fileinfo \
+    php84-bz2 php84-phar php84-pcntl php84-calendar php84-ftp php84-gettext \
+    php84-ldap php84-tidy php84-sysvsem php84-sysvshm php84-sysvmsg php84-shmop
 
 # BIND
 pkg install -y bind920
@@ -549,10 +557,13 @@ chown root:www "$PANEL_PATH/cnf/security.php"
 chmod 640 "$PANEL_PATH/cnf/security.php"
 ok "Contraseña de zadmin fijada (setzadmin)"
 
-# Baseline de migraciones: bulwark_core.sql ya trae el esquema al día, así que marcamos todas las
-# migraciones existentes como aplicadas (sin ejecutarlas). Las futuras (git pull) se aplicarán solas.
-php "$PANEL_PATH/bin/db_migrate.php" --baseline > /dev/null 2>&1 || true
-ok "Migraciones marcadas (baseline)"
+# APLICAR las migraciones (no baseline): bulwark_core.sql NO incluye todo lo que añaden las
+# migraciones (p.ej. x_imapsync_jobs), así que baselinear dejaba tablas/ajustes SIN crear
+# ("Table 'bulwark_core.x_imapsync_jobs' doesn't exist"). Las migraciones son idempotentes
+# (IF NOT EXISTS / comprueban columna), así que aplicarlas sobre el esquema base es seguro y
+# crea lo que falte. Las futuras (git pull) se aplican igual.
+php "$PANEL_PATH/bin/db_migrate.php" > /dev/null 2>&1 || true
+ok "Migraciones aplicadas"
 
 ###############################################################################
 # 9. POSTFIX

@@ -230,7 +230,7 @@ class module_controller extends ctrl_module
         }
     }
 
-    static function ExecuteCreateUser($uid, $username, $database, $access)
+    static function ExecuteCreateUser($uid, $username, $database, $access, $password = '')
     {
         global $zdbh;
         global $controller;
@@ -243,8 +243,22 @@ class module_controller extends ctrl_module
         if (fs_director::CheckForEmptyValue(self::CheckCreateForErrors($username, $database, $access))) {
             return false;
         }
+        // Contraseña: si el formulario la trae, se usa (validada); si va vacía, se genera una
+        // aleatoria (comportamiento anterior). Antes NO había forma de fijarla al crear.
+        $password = (string)$password;
+        if ($password === '') {
+            $password = fs_director::GenerateRandomPassword(16, 4);
+        } else {
+            if (strlen($password) < (int)ctrl_options::GetSystemOption('password_minlength')) {
+                self::$badpasswordlength = true;
+                return false;
+            }
+            if (!self::IsValidPassword($password)) {
+                self::$badpasswordlength = true;
+                return false;
+            }
+        }
         runtime_hook::Execute('OnBeforeCreateDatabaseUser');
-        $password = fs_director::GenerateRandomPassword(16, 4);
         self::$newPassword = $password; // displayed once in success message, never stored plain
         $hashedPw = password_hash($password, PASSWORD_BCRYPT);
         // Create user in MySQL
@@ -745,7 +759,9 @@ class module_controller extends ctrl_module
         } else {
             $access = $formvars['inAccessIP'];
         }
-        if (self::ExecuteCreateUser($currentuser['userid'], $formvars['inUserName'], $formvars['inDatabase'], $access))
+        // inPassword opcional: si va vacío, ExecuteCreateUser genera una aleatoria.
+        $pw = isset($formvars['inPassword']) ? (string)$formvars['inPassword'] : '';
+        if (self::ExecuteCreateUser($currentuser['userid'], $formvars['inUserName'], $formvars['inDatabase'], $access, $pw))
             return true;
         return false;
     }
