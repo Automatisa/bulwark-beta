@@ -505,6 +505,14 @@ function renewPanelCertificates() {
 					}
 			}
 
+			// Cachear el estado del cert DEL PANEL en x_le_status (lo lee le_admin). Antes solo se
+			// cacheaban los certs de dominios de CLIENTE, así que el del panel nunca aparecía en la
+			// vista de administración aunque estuviese emitido y válido. vhostFk=0 (no es un vhost).
+			// $lastErr debe ser '' (no null) si no hubo error real: la función marca 'error' con
+			// cualquier valor !== '' (null incluido), y el cert del panel es válido -> se derivaría
+			// el estado del propio cert (valid/expiring/expired).
+			sencrypt_status_upsert(0, $domain, $panelOwner, rtrim($certlocation, '/') . "/cert.pem", (isset($emsg) && $emsg !== '') ? $emsg : '');
+
 			echo "Control Panel Domain: " . $domain . " analyzed." . fs_filehandler::NewLine();
 		}
 
