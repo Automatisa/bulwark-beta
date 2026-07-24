@@ -683,7 +683,7 @@ smtpd_tls_exclude_ciphers =
 tls_high_cipherlist =
     ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
 # Curvas ECDHE modernas (secp256r1/secp384r1/x25519 son "sufficient" en NCSC-NL).
-smtpd_tls_eecdh_grade  = auto
+# (smtpd_tls_eecdh_grade se deja al default: 'auto' está deprecado en Postfix recientes.)
 tls_eecdh_auto_curves  = X25519 secp384r1 secp256r1
 
 # Restricciones

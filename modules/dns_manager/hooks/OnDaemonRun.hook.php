@@ -12,6 +12,9 @@ if (ui_module::CheckModuleEnabled('DNS Config')) {
     CheckDKIMKeysHook();
     // Always try to extract DS records — BIND generates keys asynchronously
     ExtractDSRecordsHook();
+    // DANE: mantener el TLSA del correo (_25._tcp.mail del dominio proveedor) sincronizado con
+    // el cert de Postfix. Solo si el dominio proveedor tiene DNSSEC (DANE lo requiere).
+    CheckMailDaneHook();
 
     // Cluster DNS (Fase 2): sincronizar la lista de zonas de los peers; si cambia,
     // marca dns_hasupdates para regenerar named.conf con los bloques `type secondary`.
@@ -64,6 +67,97 @@ function TriggerDNSUpdateHook($domainId)
         $sql->bindParam(':v', $newlist);
         $sql->execute();
     }
+}
+
+// ── DANE (TLSA del correo) ─────────────────────────────────────────────────────
+
+/**
+ * Mantiene el registro TLSA de DANE para el correo entrante del dominio proveedor
+ * (`_25._tcp.mail.<proveedor>`), derivado del certificado que sirve Postfix (smtpd_tls_cert_file).
+ *
+ * - Formato "3 1 1": DANE-EE (usage 3, no depende de CA) + SPKI (selector 1, sobrevive a la
+ *   renovación del cert si la CLAVE no cambia) + SHA-256 (matchtype 1). Es el recomendado para SMTP.
+ * - Gate: solo si el dominio proveedor tiene DNSSEC activo (DANE sin DNSSEC es inútil/peligroso).
+ * - Idempotente: solo escribe si el hash cambió (evita subir el serial en cada daemon).
+ *
+ * OJO renovación: si Let's Encrypt renueva el cert con OTRA clave, este hook actualiza el TLSA en
+ * <=5 min, pero durante la propagación DNS (TTL) los emisores que validan DANE podrían rechazar el
+ * correo. Para cero-gap habría que publicar el TLSA nuevo ANTES de cambiar el cert (rollover).
+ */
+function CheckMailDaneHook()
+{
+    global $zdbh;
+
+    $provider = (string)ctrl_options::GetSystemOption('dns_provider_domain');
+    if ($provider === '') { return; }
+
+    // vhost del proveedor + ¿DNSSEC activo?
+    $q = $zdbh->prepare(
+        "SELECT v.vh_id_pk, v.vh_acc_fk, COALESCE(ds.dd_enabled_in,0) AS dnssec
+           FROM x_vhosts v
+           LEFT JOIN x_dns_dnssec ds ON ds.dd_vhost_fk = v.vh_id_pk
+          WHERE v.vh_name_vc=:d AND v.vh_deleted_ts IS NULL LIMIT 1"
+    );
+    $q->bindParam(':d', $provider);
+    $q->execute();
+    $prov = $q->fetch(PDO::FETCH_ASSOC);
+    if (!$prov || (int)$prov['dnssec'] !== 1) { return; }   // sin DNSSEC no hay DANE
+
+    // Cert de Postfix (última aparición gana en main.cf); fallback al de recuperación.
+    $certPath = '/usr/local/etc/bulwark/panel/recovery/selfsigned.crt';
+    $mainCf   = @file_get_contents('/usr/local/etc/postfix/main.cf');
+    if ($mainCf !== false && preg_match_all('/^\s*smtpd_tls_cert_file\s*=\s*(\S+)/m', $mainCf, $m)) {
+        $certPath = end($m[1]);
+    }
+    $pem = @file_get_contents($certPath);
+    if ($pem === false || $pem === '') { return; }
+    // Si es un fullchain, quedarse con el PRIMER cert (la hoja).
+    if (preg_match('/-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----/s', $pem, $cm)) {
+        $pem = $cm[0];
+    }
+    $pub = @openssl_pkey_get_public($pem);
+    if ($pub === false) { return; }
+    $det = openssl_pkey_get_details($pub);
+    if (empty($det['key'])) { return; }
+    // det['key'] es el SubjectPublicKeyInfo en PEM → DER → SHA-256 (selector 1, matchtype 1).
+    $der  = base64_decode(preg_replace('/-----[^-]+-----|\s/', '', $det['key']));
+    if ($der === false || $der === '') { return; }
+    $hash   = strtolower(hash('sha256', $der));
+    $target = "3 1 1 $hash";
+
+    $host = '_25._tcp.mail';
+    $sel  = $zdbh->prepare(
+        "SELECT dn_id_pk, dn_target_vc FROM x_dns
+          WHERE dn_vhost_fk=:v AND dn_type_vc='TLSA' AND dn_host_vc=:h AND dn_deleted_ts IS NULL LIMIT 1"
+    );
+    $sel->bindValue(':v', $prov['vh_id_pk']);
+    $sel->bindValue(':h', $host);
+    $sel->execute();
+    $row = $sel->fetch(PDO::FETCH_ASSOC);
+
+    if ($row) {
+        if (trim((string)$row['dn_target_vc']) === $target) { return; } // sin cambios
+        $upd = $zdbh->prepare("UPDATE x_dns SET dn_target_vc=:t WHERE dn_id_pk=:id");
+        $upd->bindValue(':t',  $target);
+        $upd->bindValue(':id', $row['dn_id_pk']);
+        $upd->execute();
+        echo "  DANE TLSA actualizado para mail.$provider" . fs_filehandler::NewLine();
+    } else {
+        $ins = $zdbh->prepare(
+            "INSERT INTO x_dns
+                (dn_acc_fk, dn_name_vc, dn_vhost_fk, dn_type_vc, dn_host_vc, dn_ttl_in, dn_target_vc, dn_priority_in, dn_created_ts)
+             VALUES (:u, :name, :v, 'TLSA', :h, 3600, :t, NULL, :ts)"
+        );
+        $ins->bindValue(':u',    $prov['vh_acc_fk']);
+        $ins->bindValue(':name', $provider);
+        $ins->bindValue(':v',    $prov['vh_id_pk']);
+        $ins->bindValue(':h',    $host);
+        $ins->bindValue(':t',    $target);
+        $ins->bindValue(':ts',   time());
+        $ins->execute();
+        echo "  DANE TLSA creado para mail.$provider" . fs_filehandler::NewLine();
+    }
+    TriggerDNSUpdateHook($prov['vh_id_pk']);
 }
 
 // ── DKIM key management ───────────────────────────────────────────────────────
@@ -280,6 +374,10 @@ function WriteDNSZoneRecordsHook()
                     break;
                 case "CAA":
                     $line .= "$host    $ttl    IN    CAA    $target" . fs_filehandler::NewLine();
+                    break;
+                case "TLSA":
+                    // target ya viene como "usage selector matchtype certdata" (p.ej. "3 1 1 <hash>")
+                    $line .= "$host    $ttl    IN    TLSA    $target" . fs_filehandler::NewLine();
                     break;
             }
         }
