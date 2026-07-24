@@ -660,6 +660,32 @@ smtpd_tls_security_level = may
 smtpd_tls_key_file  = /usr/local/etc/bulwark/panel/recovery/selfsigned.key
 smtpd_tls_cert_file = /usr/local/etc/bulwark/panel/recovery/selfsigned.crt
 
+# --- Endurecimiento TLS (recepcion y envio) — guias NCSC-NL 2025 / internet.nl ---
+# Solo TLS 1.2 y 1.3 (TLS 1.0/1.1 son "insufficient"). security_level=may (oportunista): si un
+# emisor antiguo no negocia, cae a texto plano y el correo se entrega igual -> ser estricto aqui
+# no afecta a la entregabilidad, solo sube el nivel cuando SI hay TLS.
+smtpd_tls_protocols           = >=TLSv1.2
+smtpd_tls_mandatory_protocols = >=TLSv1.2
+smtp_tls_protocols            = >=TLSv1.2
+smtp_tls_mandatory_protocols  = >=TLSv1.2
+# El servidor impone SU orden de cifrados, no el del cliente.
+tls_preempt_cipherlist      = yes
+smtpd_tls_ciphers           = high
+smtpd_tls_mandatory_ciphers = high
+# Excluir familias inseguras: sin autenticacion (aNULL), key-exchange RSA (kRSA, sin forward
+# secrecy), DHE (evita DH-1024 y grupos autogenerados), CBC+SHA1, CAMELLIA/SEED/IDEA, 3DES,
+# RC4/MD5, PSK/SRP y CCM_8.
+smtpd_tls_exclude_ciphers =
+    aNULL, eNULL, EXPORT, DES, 3DES, RC4, MD5, PSK, SRP,
+    CAMELLIA, SEED, IDEA, kRSA, aDSS, kDHE, DHE, AECDH, ADH,
+    AES128-SHA, AES256-SHA, AES128-SHA256, AES256-SHA256, CCM8, SHA1
+# Lista TLS 1.2: solo ECDHE con AEAD (GCM/CHACHA20) -> forward secrecy, sin CBC/SHA1.
+tls_high_cipherlist =
+    ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256
+# Curvas ECDHE modernas (secp256r1/secp384r1/x25519 son "sufficient" en NCSC-NL).
+smtpd_tls_eecdh_grade  = auto
+tls_eecdh_auto_curves  = X25519 secp384r1 secp256r1
+
 # Restricciones
 smtpd_helo_required = yes
 disable_vrfy_command = yes
