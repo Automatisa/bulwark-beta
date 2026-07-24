@@ -80,9 +80,12 @@ function TriggerDNSUpdateHook($domainId)
  * - Gate: solo si el dominio proveedor tiene DNSSEC activo (DANE sin DNSSEC es inútil/peligroso).
  * - Idempotente: solo escribe si el hash cambió (evita subir el serial en cada daemon).
  *
- * OJO renovación: si Let's Encrypt renueva el cert con OTRA clave, este hook actualiza el TLSA en
- * <=5 min, pero durante la propagación DNS (TTL) los emisores que validan DANE podrían rechazar el
- * correo. Para cero-gap habría que publicar el TLSA nuevo ANTES de cambiar el cert (rollover).
+ * Renovación LE: sencrypt/Lescript REUTILIZA la clave privada del dominio al renovar (solo genera
+ * clave si private.pem no existe), así que el SPKI —y por tanto este TLSA "3 1 1"— NO cambia en las
+ * renovaciones automáticas: no hay ventana de fallo DANE. La clave solo cambia si se BORRA y recrea
+ * el cert a mano; en ese caso este hook resincroniza el TLSA en <=5 min (breve ventana, operación
+ * manual poco frecuente). Para cero-gap absoluto en ese caso habría que publicar el TLSA nuevo antes
+ * de cambiar el cert (rollover), no implementado por innecesario en el flujo normal.
  */
 function CheckMailDaneHook()
 {
