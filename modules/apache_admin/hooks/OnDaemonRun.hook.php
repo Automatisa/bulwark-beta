@@ -462,7 +462,18 @@ function WriteVhostConfigFile() {
 	$vhostPort = ( fs_director::CheckForEmptyValue($rowvhost['vh_custom_port_in']) ) ? $VHostDefaultPort : $rowvhost['vh_custom_port_in'];
 
 	$vhostIp = ( fs_director::CheckForEmptyValue($rowvhost['vh_custom_ip_vc']) ) ? "*" : $rowvhost['vh_custom_ip_vc'];
-	
+
+	// SSL (443): un dominio con IP compartida debe ligar su vhost SSL a la IP PRIMARIA del
+	// servidor, NO a "*". El panel liga su SSL a server_ip:443 (IP específica), que en Apache
+	// TIENE PRIORIDAD sobre los vhosts "*:443" para esa IP -> con "*:443" el SNI de los dominios
+	// de cliente caía en el vhost del panel y TODOS servían el cert del panel (name mismatch).
+	// Ligando también a server_ip:443, todos están en el mismo grupo y el SNI sirve el cert
+	// correcto de cada dominio. El HTTP (:80) se queda en "*" (name-based, sin problema de SNI).
+	$_srvIp4    = (string)ctrl_options::GetSystemOption('server_ip');
+	$vhostIpSsl = ( fs_director::CheckForEmptyValue($rowvhost['vh_custom_ip_vc']) )
+	            ? ( filter_var($_srvIp4, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false ? $_srvIp4 : "*" )
+	            : $rowvhost['vh_custom_ip_vc'];
+
 	# Get Package php and cgi enabled options
 	#*************************************************
 	# Nueva estructura: hosted_dir/username/vh_directory_vc/public_html/
@@ -538,7 +549,7 @@ function WriteVhostConfigFile() {
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= "# THIS DOMAIN HAS BEEN DISABLED FOR DISK QUOTA OVERAGE & HAS SSL ENABLED" . fs_filehandler::NewLine();
-				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIp, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
+				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIpSsl, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
 				$line .= "ServerName " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				if (!empty($serveralias))
 					$line .= "ServerAlias " . $serveralias . fs_filehandler::NewLine();
@@ -609,7 +620,7 @@ function WriteVhostConfigFile() {
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= "# THIS DOMAIN HAS BEEN DISABLED FOR BANDWIDTH OVERAGE & HAS SSL ENABLED" . fs_filehandler::NewLine();
-				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIp, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
+				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIpSsl, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
 				$line .= "ServerName " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				if (!empty($serveralias))
 					$line .= "ServerAlias " . $serveralias . fs_filehandler::NewLine();
@@ -799,7 +810,7 @@ function WriteVhostConfigFile() {
 				$line .= "# THIS DOMAIN HAS SSL ENABLED" . fs_filehandler::NewLine();
 				
 				#START HERE
-				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIp, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
+				$line .= "<virtualhost " . bulwark_vhost_addrs($vhostIpSsl, ($rowvhost['vh_custom_ip6_vc'] ?? ''), $rowvhost['vh_ssl_port_in']) . ">" . fs_filehandler::NewLine();
 		
 				// Server name, alias, email settings
 				$line .= "ServerName " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
