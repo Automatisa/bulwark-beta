@@ -41,10 +41,12 @@ $ns2   = ctrl_options::GetSystemOption('dns_ns2');
 $ip    = ctrl_options::GetSystemOption('server_ip');
 $ns1ip = ctrl_options::GetSystemOption('dns_ns1_ip');
 $ns2ip = ctrl_options::GetSystemOption('dns_ns2_ip');
+$ip6   = ctrl_options::GetSystemOption('server_ip6'); // vacío = servidor sólo IPv4
 if (fs_director::CheckForEmptyValue($ns1))   { $ns1   = 'ns1.' . $provider; }
 if (fs_director::CheckForEmptyValue($ns2))   { $ns2   = 'ns2.' . $provider; }
 if (fs_director::CheckForEmptyValue($ns1ip)) { $ns1ip = $ip; }
 if (fs_director::CheckForEmptyValue($ns2ip)) { $ns2ip = $ip; }
+$has6 = !fs_director::CheckForEmptyValue($ip6);
 $fqdn = ctrl_options::GetSystemOption('bulwark_domain'); // p.ej. panel.provider.com
 
 // Cuenta zadmin (grupo 1)
@@ -105,12 +107,27 @@ if ((int)$cnt->fetchColumn() === 0) {
         ['A',   'www',   3600,   $ip,    null],
         ['A',   'mail',  3600,   $ip,    null],
         ['MX',  '@',     3600,   'mail.' . $provider, 10],
-        ['TXT', '@',     3600,   'v=spf1 a mx ip4:' . $ip . ' ~all', null],
-        ['TXT', '_dmarc',3600,   'v=DMARC1; p=none; rua=mailto:postmaster@' . $provider . '; fo=1', null],
+        // SPF: si el servidor es doble pila, autorizar también la IPv6 de salida del correo.
+        ['TXT', '@',     3600,   'v=spf1 a mx ip4:' . $ip . ($has6 ? ' ip6:' . $ip6 : '') . ' ~all', null],
+        ['TXT', '_dmarc',3600,   'v=DMARC1; p=quarantine; rua=mailto:postmaster@' . $provider . '; fo=1', null],
         ['TXT', 'default._domainkey', 3600, 'PENDING', null],
     ];
+    // Registros AAAA (doble pila): sólo si server_ip6 está definido. Sin esto, ns1/ns2/mail
+    // quedan sólo en IPv4 y el test de internet.nl (IPv6) falla para el dominio proveedor.
+    if ($has6) {
+        $ns1ip6 = ctrl_options::GetSystemOption('dns_ns1_ip6');
+        $ns2ip6 = ctrl_options::GetSystemOption('dns_ns2_ip6');
+        if (fs_director::CheckForEmptyValue($ns1ip6)) { $ns1ip6 = $ip6; }
+        if (fs_director::CheckForEmptyValue($ns2ip6)) { $ns2ip6 = $ip6; }
+        $records[] = ['AAAA', 'ns1',  172800, $ns1ip6, null];
+        $records[] = ['AAAA', 'ns2',  172800, $ns2ip6, null];
+        $records[] = ['AAAA', '@',    3600,   $ip6,    null];
+        $records[] = ['AAAA', 'www',  3600,   $ip6,    null];
+        $records[] = ['AAAA', 'mail', 3600,   $ip6,    null];
+    }
     if ($panelHost !== null && $panelHost !== 'www') {
         $records[] = ['A', $panelHost, 3600, $ip, null];
+        if ($has6) { $records[] = ['AAAA', $panelHost, 3600, $ip6, null]; }
     }
 
     $dstmt = $zdbh->prepare("INSERT INTO x_dns

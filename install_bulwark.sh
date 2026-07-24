@@ -1641,6 +1641,9 @@ RNDCCONF
 mkdir -p "$PANEL_CONF/bind/etc"
 mkdir -p "$PANEL_CONF/bind/zones"
 touch "$PANEL_CONF/bind/etc/named.conf"
+# named-external.conf: fichero donde el daemon escribe las zonas CON DNSSEC (inline-signing).
+# Se crea vacío para que el include del named.conf principal no falle en el primer arranque.
+touch "$PANEL_CONF/bind/etc/named-external.conf"
 
 # Bloque de forwarders para named a partir de la lista elegida (espacios -> "ip; ip;").
 BIND_FWD=""
@@ -1668,15 +1671,11 @@ options {
     listen-on  port 53  { any; };
     listen-on-v6        { any; };
     allow-query         { any; };
-    // Resolver recursivo SOLO para el propio servidor (localhost): el sistema usa
-    // 127.0.0.1 como DNS -> zonas locales al instante + caché; lo externo se reenvía a los DNS
-    // elegidos. NUNCA abrir allow-recursion a { any } (sería un resolver abierto -> amplificación
-    // DDoS). Los clientes EXTERNOS siguen recibiendo solo respuestas autoritativas.
-    recursion           yes;
-    allow-recursion     { 127.0.0.1; ::1; };
-    allow-query-cache   { 127.0.0.1; ::1; };
-    forwarders          {$BIND_FWD };
-    forward             first;
+    // Dos roles vía views (abajo): la view "internal" (127.0.0.1) recursa/valida DNSSEC y la
+    // view "external" (any) responde SOLO autoritativo. Global sin recursión: NUNCA un resolver
+    // abierto (amplificación DDoS). Los clientes externos sólo reciben respuestas autoritativas.
+    recursion           no;
+    allow-recursion     { none; };
 
     dump-file              "$PANEL_DATA/named/data/cache_dump.db";
     statistics-file        "$PANEL_DATA/named/data/named_stats.txt";
@@ -1684,7 +1683,8 @@ options {
 
     bindkeys-file          "/usr/local/etc/namedb/bind.keys";
     managed-keys-directory "$PANEL_DATA/named";
-    dnssec-validation   auto;
+    // Default sin validación; la view "internal" la activa con "auto".
+    dnssec-validation   no;
     auth-nxdomain       no;
     allow-transfer      { none; };
 };
@@ -1705,9 +1705,54 @@ logging {
     category default { bind_log; };
 };
 
-zone "." { type hint; file "/usr/local/etc/namedb/named.root"; };
+// ── Política de firma DNSSEC — para zonas alojadas en Bulwark ──────────────────
+// KSK sin rotación automática (el usuario registra el DS en el registrador; un cambio
+// inesperado rompería la cadena de confianza). ZSK rota cada 90 días (BIND hace el
+// rollover solo). ECDSAP256SHA256 (alg 13): claves pequeñas, soportado por registradores.
+// El daemon (dns_manager) referencia esta política en las zonas con DNSSEC activado.
+dnssec-policy "bulwark-dnssec" {
+    keys {
+        ksk lifetime unlimited algorithm ecdsap256sha256;
+        zsk lifetime P90D      algorithm ecdsap256sha256;
+    };
+    dnskey-ttl               300;
+    signatures-validity      14d;
+    signatures-refresh        5d;
+    max-zone-ttl         604800;
+    zone-propagation-delay    5m;
+    parent-ds-ttl             1h;
+    parent-propagation-delay  1h;
+    publish-safety            1h;
+    retire-safety             2h;
+};
 
-include "$PANEL_CONF/bind/etc/named.conf";
+// ── VIEW INTERNAL — resolver validador (DNSSEC) para uso exclusivo del servidor ──
+// Resuelve las zonas SIN DNSSEC localmente y lo demás por recursión validada. Las zonas CON
+// DNSSEC (inline-signing) NO se declaran aquí: se resuelven por recursión para evitar el
+// conflicto "writeable file already in use" con la view external.
+view "internal" {
+    match-clients       { 127.0.0.1; ::1; };
+    recursion           yes;
+    allow-recursion     { 127.0.0.1; ::1; };
+    forwarders          {$BIND_FWD };
+    forward             first;
+    dnssec-validation   auto;
+
+    zone "." { type hint; file "/usr/local/etc/namedb/named.root"; };
+    include "$PANEL_CONF/bind/etc/named.conf";
+};
+
+// ── VIEW EXTERNAL — servidor autoritativo puro para el resto del mundo ──
+// Contiene TODAS las zonas (las firmadas con DNSSEC llevan dnssec-policy + inline-signing).
+// Fichero separado del de la view internal: por eso una misma zona puede aparecer en ambos
+// ficheros sin conflicto (son views distintas).
+view "external" {
+    match-clients       { any; };
+    recursion           no;
+    dnssec-validation   no;
+
+    include "$PANEL_CONF/bind/etc/named-external.conf";
+};
 NAMEDCF
 
 # Copiar zonas base desde preconf
