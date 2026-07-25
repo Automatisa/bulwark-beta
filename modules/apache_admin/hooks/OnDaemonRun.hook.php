@@ -89,10 +89,19 @@ function BuildVhostReWriteSSL($vhostName, $userEmail) {
 	if ($vhostName != ctrl_options::GetSystemOption('bulwark_domain') ) 
 		$line .= "ServerAlias www." . $vhostName . fs_filehandler::NewLine();
     $line .= "ServerAdmin " . $userEmail . fs_filehandler::NewLine();
+    # Reto ACME (Let's Encrypt) servido por HTTP desde el dir COMPARTIDO de Bulwark
+    # (/var/bulwark/acme-challenge, escribible por el panel). Antes el :80 excluía el
+    # challenge del redirect pero NO tenía DocumentRoot -> se servía un 404 y la
+    # emisión/renovación HTTP-01 fallaba. El Alias lo resuelve para todos los dominios.
+    $line .= 'Alias "/.well-known/acme-challenge" "/var/bulwark/acme-challenge"' . fs_filehandler::NewLine();
+    $line .= '<Directory "/var/bulwark/acme-challenge">' . fs_filehandler::NewLine();
+    $line .= "    Require all granted" . fs_filehandler::NewLine();
+    $line .= "    Options None" . fs_filehandler::NewLine();
+    $line .= "    AllowOverride None" . fs_filehandler::NewLine();
+    $line .= "</Directory>" . fs_filehandler::NewLine();
     $line .= "RewriteEngine On" . fs_filehandler::NewLine();
 	$line .= "RewriteCond %{HTTPS} !=on" . fs_filehandler::NewLine();
-	# Excluir el challenge ACME (Let's Encrypt), que se sirve por HTTP, para no
-	# romper la emision/renovacion de certificados al forzar HTTPS.
+	# Excluir el challenge ACME del redirect a HTTPS (se sirve por HTTP vía el Alias de arriba).
 	$line .= "RewriteCond %{REQUEST_URI} !^/\\.well-known/acme-challenge/" . fs_filehandler::NewLine();
 	$line .= "RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]" . fs_filehandler::NewLine();
     $line .= "</virtualhost>" . fs_filehandler::NewLine();
@@ -386,6 +395,12 @@ function WriteVhostConfigFile() {
 			$line .= "    Options +FollowSymLinks -Indexes" . fs_filehandler::NewLine();
 			$line .= "    AllowOverride All" . fs_filehandler::NewLine();
 			$line .= "    Require all granted" . fs_filehandler::NewLine();
+			$line .= "</Directory>" . fs_filehandler::NewLine();
+			# Reto ACME por HTTP desde el dir compartido (para renovar el cert del panel por HTTP-01).
+			$line .= 'Alias "/.well-known/acme-challenge" "/var/bulwark/acme-challenge"' . fs_filehandler::NewLine();
+			$line .= '<Directory "/var/bulwark/acme-challenge">' . fs_filehandler::NewLine();
+			$line .= "    Require all granted" . fs_filehandler::NewLine();
+			$line .= "    Options None" . fs_filehandler::NewLine();
 			$line .= "</Directory>" . fs_filehandler::NewLine();
 			$line .= "</VirtualHost>" . fs_filehandler::NewLine();
 			$line .= fs_filehandler::NewLine() . "##-------" . fs_filehandler::NewLine() . fs_filehandler::NewLine();

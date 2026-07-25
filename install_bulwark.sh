@@ -388,6 +388,10 @@ mkdir -p "$PANEL_DATA/hostdata"
 mkdir -p "$PANEL_DATA/backups"
 mkdir -p "$PANEL_DATA/temp"
 mkdir -p "$PANEL_DATA/sessions"
+# Dir de reto ACME COMPARTIDO (Let's Encrypt HTTP-01): el panel escribe el token aquí y Apache
+# lo sirve vía un Alias en los vhosts :80. Evita la fragilidad de permisos del .well-known
+# por-dominio (que un chown -R de aislamiento revierte). Propiedad del panel, grupo www.
+mkdir -p "$PANEL_DATA/acme-challenge"
 mkdir -p "$PANEL_DATA/named/data"
 mkdir -p "$PANEL_DATA/sieve"
 mkdir -p "$PANEL_DATA/logs/bind"
@@ -2055,6 +2059,10 @@ chown www:www "$PANEL_DATA/logs/bulwark.log" \
 # Sesiones PHP
 chown www:www "$PANEL_DATA/sessions"
 chmod 733 "$PANEL_DATA/sessions"
+
+# Reto ACME compartido: el panel (bulwark) escribe el token, Apache (grupo www) lo lee.
+chown bulwark:www "$PANEL_DATA/acme-challenge" 2>/dev/null || chown www:www "$PANEL_DATA/acme-challenge"
+chmod 2775 "$PANEL_DATA/acme-challenge"
 
 # Conf sensibles: root:dovecot solo lectura
 chmod 640 "$PANEL_CONF/dovecot2/dovecot-mysql.conf" \

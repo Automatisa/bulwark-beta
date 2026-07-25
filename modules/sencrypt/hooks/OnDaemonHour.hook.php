@@ -453,6 +453,14 @@ function renewPanelCertificates() {
 					} else {
 						echo "   Certificate still valid for more than 30 days. No renewal needed." . fs_filehandler::NewLine();
 					}
+						
+						// Reemisión forzada del panel (mismo mecanismo que los clientes con vh_le_reissue_ts):
+						// ajuste panel_le_reissue_ts. Útil p.ej. para migrar el cert del panel a ECDSA ya.
+						$reissueReq = (int)ctrl_options::GetSystemOption('panel_le_reissue_ts');
+						if ($reissueReq > 0 && (!file_exists($certfile) || filemtime($certfile) < $reissueReq)) {
+							echo "   Panel: reemisión forzada solicitada." . fs_filehandler::NewLine();
+							$needsgen = true;
+						}
 				}
 			}
 
@@ -481,7 +489,10 @@ function renewPanelCertificates() {
 					if (!sencrypt_is_staging() && file_exists($newCert) && file_exists($newKey)) {
 						$ssl_tx  = "SSLEngine On\n";
 						$ssl_tx .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1\n";
-						$ssl_tx .= "SSLCipherSuite ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384\n";
+						// Lista con ECDHE-ECDSA **y** ECDHE-RSA: el cert del panel ya es ECDSA (P-256), pero
+						// mantener RSA permite negociar si algún día se usa un cert RSA. Sin las suites
+						// ECDHE-ECDSA, un cert ECDSA no negociaría ningún cifrado.
+						$ssl_tx .= "SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305\n";
 						$ssl_tx .= "SSLCertificateFile " . $newCert . "\n";
 						$ssl_tx .= "SSLCertificateKeyFile " . $newKey . "\n";
 						$upd = $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_ssl_tx'");

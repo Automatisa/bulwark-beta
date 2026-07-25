@@ -64,7 +64,7 @@ class Lescript
             # generate and save new private key for account
             # ---------------------------------------------
             $this->log('Starting new account registration');
-            $this->generateKey(dirname($this->accountKeyPath));
+            $this->generateKey(dirname($this->accountKeyPath), 'rsa'); // cuenta ACME = RSA (JWS RS256)
             $this->postNewReg();
             $this->log('New account certificate registered');
 			
@@ -216,8 +216,12 @@ class Lescript
                 $this->log("DNS-01: provisionando $dnsRecordName TXT ...");
                 call_user_func($dnsProvision, $dnsRecordName, $dnsTxtValue);
             } else {
-                # HTTP-01: escribir el token en el webroot.
-                $directory = $this->webRootDir . '/.well-known/acme-challenge';
+                # HTTP-01: escribir el token en el dir de reto COMPARTIDO de Bulwark si existe
+                # (propiedad del panel -> siempre escribible; servido por un Alias global en el vhost
+                # :80, evitando la fragilidad de permisos del .well-known por-dominio). Si no existe,
+                # se cae al .well-known del webroot del dominio (comportamiento clásico).
+                $shared = '/var/bulwark/acme-challenge';
+                $directory = is_dir($shared) ? $shared : ($this->webRootDir . '/.well-known/acme-challenge');
                 $tokenPath = $directory . '/' . $challenge['token'];
                 if (!file_exists($directory) && !@mkdir($directory, 0755, true)) {
                     throw new RuntimeException("Couldn't create directory to expose challenge: " . $tokenPath);
@@ -230,33 +234,33 @@ class Lescript
             # 3. verification process itself
             # -------------------------------
             $this->log("Sending request to challenge");
-                
-            # send request to challenge
-            $maxAllowedLoops = 6;
-            $loopCount = 1;
-            $result = null;
-            while ($loopCount < $maxAllowedLoops) {
-                $result = $this->signedRequest(
-                    $challenge['url'],
-                    array("keyAuthorization" => $payload)
-                );
 
-                if (empty($result['status']) || $result['status'] == "invalid") {
+            # Disparar la validación UNA sola vez (POST con keyAuthorization).
+            $this->signedRequest(
+                $challenge['url'],
+                array("keyAuthorization" => $payload)
+            );
+
+            # Luego SOLO consultar el estado con POST-as-GET (payload vacío -> ver signedRequest).
+            # Re-POSTear el keyAuthorization en cada vuelta (como hacía antes) daba un 400
+            # "authorization must be pending" en cuanto la autorización pasaba a "valid": fallaba
+            # cualquier validación que tardara más de una vuelta (p.ej. el dominio del panel).
+            $maxAllowedLoops = 15;
+            $loopCount = 0;
+            $result = null;
+            do {
+                sleep(min(8, $loopCount + 1));
+                $result = $this->signedRequest($challenge['url'], "");
+                $loopCount++;
+                if (!empty($result['status']) && $result['status'] === "invalid") {
                     throw new RuntimeException("Verification ended with error: " . json_encode($result));
                 }
-
-                if ($result['status'] != "pending") {
-                    break;
+                if (empty($result['status']) || $result['status'] === "pending") {
+                    $this->log("Verification pending, waiting...");
                 }
+            } while ((empty($result['status']) || $result['status'] === "pending") && $loopCount < $maxAllowedLoops);
 
-                $sleepTime = $loopCount * $loopCount; // 1 4 9 16 25 36
-                $loopCount++;
-
-                $this->log("Verification pending, sleeping " . $sleepTime . "s");
-                sleep($sleepTime);
-            }
-
-            if ($result['status'] === "pending") {
+            if (empty($result['status']) || $result['status'] === "pending") {
                 throw new RuntimeException("Verification timed out");
             }
 
@@ -273,8 +277,18 @@ class Lescript
         # ----------------------
         $domainPath = $this->getDomainPath(reset($domains));
 
-        # generate private key for domain if not exist
-        if (!is_dir($domainPath) || !is_file($domainPath . '/private.pem')) {
+        # Generar la clave del dominio si no existe. También se REGENERA si la existente es RSA
+        # (migración a ECDSA): así la renovación normal migra los certs antiguos sin intervención.
+        # Una vez EC, se reutiliza en cada renovación (SPKI estable -> DANE no se rompe).
+        $needKey = !is_dir($domainPath) || !is_file($domainPath . '/private.pem');
+        if (!$needKey) {
+            $existing = @openssl_pkey_get_private(file_get_contents($domainPath . '/private.pem'));
+            $kd = $existing ? openssl_pkey_get_details($existing) : false;
+            if (!$kd || (($kd['type'] ?? -1) !== OPENSSL_KEYTYPE_EC)) {
+                $needKey = true; // clave RSA antigua -> regenerar como EC
+            }
+        }
+        if ($needKey) {
             $this->generateKey($domainPath);
         }
 
@@ -480,12 +494,24 @@ keyUsage = nonRepudiation, digitalSignature, keyEncipherment');
         return trim(Base64UrlSafeEncoder::encode(base64_decode($matches[1])));
     }
 
-    protected function generateKey($outputDirectory)
+    protected function generateKey($outputDirectory, $type = 'ec')
     {
-        $res = openssl_pkey_new(array(
-            "private_key_type" => OPENSSL_KEYTYPE_RSA,
-            "private_key_bits" => 4096,
-        ));
+        // Claves de DOMINIO: ECDSA P-256 (secp256r1/prime256v1) — "sufficient" en NCSC-NL, certs más
+        // pequeños/rápidos y firmados por la cadena ECDSA de Let's Encrypt (quita el aviso "RSA-2048
+        // phase out" del intermedio RSA).
+        // Clave de CUENTA ACME: DEBE ser RSA — signedRequest firma el JWS con alg "RS256"; una clave
+        // EC daría "Unable to validate JWS" (400 malformed). Por eso initAccount llama con 'rsa'.
+        if ($type === 'rsa') {
+            $res = openssl_pkey_new(array(
+                "private_key_type" => OPENSSL_KEYTYPE_RSA,
+                "private_key_bits" => 4096,
+            ));
+        } else {
+            $res = openssl_pkey_new(array(
+                "private_key_type" => OPENSSL_KEYTYPE_EC,
+                "curve_name"       => "prime256v1",
+            ));
+        }
 
         if (!openssl_pkey_export($res, $privateKey)) {
             throw new RuntimeException("Key export failed!");
