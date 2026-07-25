@@ -355,3 +355,58 @@ var SentoraDNS = {
 $(function() {
     SentoraDNS.init();
 });
+
+/* --- CSP Fase 2: funciones antes inline en el controlador; ahora aquí, globales para data-call --- */
+function dnssecCopy(id) {
+    var el = document.getElementById(id); if (!el) return;
+    var t = el.innerText.trim();
+    if (navigator.clipboard) { navigator.clipboard.writeText(t); } else { prompt("Copia este valor:", t); }
+}
+function dnsConfirmDeleteAll(domain) {
+    if (confirm("¿Borrar TODOS los registros DNS de " + domain + "?\nEl dominio quedará aislado de internet.")) {
+        document.getElementById("dnsDeleteAllForm").submit();
+    }
+}
+function toggleZoneExport() {
+    var btn = this;
+    var el = document.getElementById("zoneExportContent");
+    var shown = el.style.display !== "none";
+    el.style.display = shown ? "none" : "block";
+    btn.innerHTML = shown ? '<span class="bi bi-eye"></span> Show Zone File'
+                          : '<span class="bi bi-eye-slash"></span> Hide Zone File';
+}
+function downloadZone(domain) {
+    var text = document.getElementById("zoneExportText").value;
+    var blob = new Blob([text], { type: "text/plain" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = domain + ".zone";
+    a.click();
+    URL.revokeObjectURL(a.href);
+}
+function dnsDomainChanged(val) {
+    var d = !val;
+    document.getElementById("btnEditDomain").classList.toggle("disabled", d);
+    document.getElementById("btnRegenZone").classList.toggle("disabled", d);
+}
+function dnsSubmitAction(action) {
+    var form = document.getElementById("dnsSelectForm");
+    form.action = "./?module=dns_manager&action=" + action;
+    form.submit();
+}
+function dnsCreateChanged(val) {
+    document.getElementById("btnCreateDNS").classList.toggle("disabled", !val);
+}
+function dnsCreateSubmit() {
+    var sel = document.getElementById("inDomainCreate");
+    var name = sel.options[sel.selectedIndex].text;
+    if (confirm("¿Crear registros DNS por defecto para " + name + "?")) {
+        document.getElementById("dnsCreateForm").submit();
+    }
+}
+$(function () {
+    var d = document.getElementById("inDomain");
+    if (d) d.addEventListener("change", function () { dnsDomainChanged(this.value); });
+    var c = document.getElementById("inDomainCreate");
+    if (c) c.addEventListener("change", function () { dnsCreateChanged(this.value); });
+});

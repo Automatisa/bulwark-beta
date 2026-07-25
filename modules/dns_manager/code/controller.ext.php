@@ -621,7 +621,7 @@ class module_controller extends ctrl_module
             $line .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:6px" id="dnssecDsValue">';
             $line .= htmlspecialchars($dnssecDs, ENT_QUOTES, 'UTF-8');
             $line .= '</div>';
-            $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="dnssecCopy(\'dnssecDsValue\')"><i class="bi bi-clipboard"></i> Copiar DS</button>';
+            $line .= '<button type="button" class="btn btn-secondary btn-sm" data-call="dnssecCopy" data-args="[&quot;dnssecDsValue&quot;]"><i class="bi bi-clipboard"></i> Copiar DS</button>';
             $line .= '<p style="margin-top:6px;color:#777;font-size:12px">Campos sueltos &rarr; <b>Key tag:</b> ' . htmlspecialchars((string)$keytagTxt, ENT_QUOTES) . ' &middot; <b>Algoritmo:</b> ' . $dnssecAlgo . ' (' . $algoName . ') &middot; <b>Digest:</b> 2 (SHA-256)</p>';
 
             // ── Formato 2: DNSKEY (clave pública) — p.ej. OVH ──
@@ -632,9 +632,8 @@ class module_controller extends ctrl_module
                 $line .= '<div style="background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;margin-bottom:6px" id="dnssecKeyValue">';
                 $line .= htmlspecialchars($dnssecKey, ENT_QUOTES, 'UTF-8');
                 $line .= '</div>';
-                $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="dnssecCopy(\'dnssecKeyValue\')"><i class="bi bi-clipboard"></i> Copiar clave pública</button>';
+                $line .= '<button type="button" class="btn btn-secondary btn-sm" data-call="dnssecCopy" data-args="[&quot;dnssecKeyValue&quot;]"><i class="bi bi-clipboard"></i> Copiar clave pública</button>';
             }
-            $line .= '<script>function dnssecCopy(id){var t=document.getElementById(id).innerText.trim();navigator.clipboard?navigator.clipboard.writeText(t):prompt("Copia este valor:",t);}</script>';
         }
 
         // Toggle button
@@ -642,7 +641,7 @@ class module_controller extends ctrl_module
             $line .= '<form action="./?module=dns_manager&action=ToggleDnssec" method="post" style="margin-top:10px">';
             $line .= '<input type="hidden" name="domainID" value="' . $domain['vh_id_pk'] . '">';
             $line .= '<input type="hidden" name="enable" value="0">';
-            $line .= '<button type="submit" class="btn btn-secondary btn-sm" onclick="return confirm(\'¿Desactivar DNSSEC para ' . addslashes($domain['vh_name_vc']) . '?\nDebes eliminar el DS record de tu registrador antes para evitar SERVFAIL.\')">';
+            $line .= '<button type="submit" class="btn btn-secondary btn-sm" data-confirm="¿Desactivar DNSSEC para ' . htmlspecialchars($domain['vh_name_vc'], ENT_QUOTES) . '? Debes eliminar el DS record de tu registrador antes para evitar SERVFAIL.">';
             $line .= '<i class="bi bi-x-lg"></i> Desactivar DNSSEC</button>';
             $line .= self::getCSFR_Tag();
             $line .= '</form>';
@@ -663,17 +662,10 @@ class module_controller extends ctrl_module
         $line .= '<p>' . ui_language::translate('Delete ALL DNS records for this domain. The domain will be isolated from the internet.') . '</p>';
         $line .= '<form id="dnsDeleteAllForm" action="./?module=dns_manager&action=DeleteAllDNS" method="post">';
         $line .= '<input type="hidden" name="domainID" value="' . $domain['vh_id_pk'] . '">';
-        $line .= '<button type="button" class="btn btn-danger" onclick="dnsConfirmDeleteAll(\'' . addslashes($domain['vh_name_vc']) . '\')">';
+        $line .= '<button type="button" class="btn btn-danger" data-call="dnsConfirmDeleteAll" data-args="' . htmlspecialchars(json_encode([$domain['vh_name_vc']]), ENT_QUOTES) . '">';
         $line .= '<i class="bi bi-trash"></i>  ' . ui_language::translate('Delete All DNS Records') . '</button>';
         $line .= self::getCSFR_Tag();
         $line .= '</form>';
-        $line .= '<script>
-function dnsConfirmDeleteAll(domain) {
-    if (confirm("¿Borrar TODOS los registros DNS de " + domain + "?\nEl dominio quedará aislado de internet.")) {
-        document.getElementById("dnsDeleteAllForm").submit();
-    }
-}
-</script>';
         $line .= '</div>';
 
         // Zone Export
@@ -693,9 +685,9 @@ function dnsConfirmDeleteAll(domain) {
                 . date('Y-m-d H:i:s', $zoneFileMtime)
                 . '</b> &mdash; ' . ui_language::translate('Reflects the last daemon sync, not unsaved edits.') . '</p>';
             $line .= '<p>';
-            $line .= '<button type="button" class="btn btn-secondary btn-sm" onclick="toggleZoneExport(this)">';
+            $line .= '<button type="button" class="btn btn-secondary btn-sm" data-call="toggleZoneExport">';
             $line .= '<i class="bi bi-eye"></i> ' . ui_language::translate('Show Zone File') . '</button>';
-            $line .= '&nbsp;<button type="button" class="btn btn-secondary btn-sm" onclick="downloadZone(\'' . addslashes($domain['vh_name_vc']) . '\')">';
+            $line .= '&nbsp;<button type="button" class="btn btn-secondary btn-sm" data-call="downloadZone" data-args="' . htmlspecialchars(json_encode([$domain['vh_name_vc']]), ENT_QUOTES) . '">';
             $line .= '<i class="bi bi-download"></i> ' . ui_language::translate('Download') . '</button>';
             $line .= '</p>';
             $line .= '<div id="zoneExportContent" style="display:none;margin-top:8px">';
@@ -703,24 +695,6 @@ function dnsConfirmDeleteAll(domain) {
             $line .= htmlspecialchars($zoneContent, ENT_NOQUOTES, 'UTF-8');
             $line .= '</textarea>';
             $line .= '</div>';
-            $line .= '<script>
-function toggleZoneExport(btn) {
-    var el = document.getElementById("zoneExportContent");
-    var shown = el.style.display !== "none";
-    el.style.display = shown ? "none" : "block";
-    btn.innerHTML = shown ? \'<span class="bi bi-eye"></span> Show Zone File\'
-                          : \'<span class="bi bi-eye-slash"></span> Hide Zone File\';
-}
-function downloadZone(domain) {
-    var text = document.getElementById("zoneExportText").value;
-    var blob = new Blob([text], {type: "text/plain"});
-    var a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = domain + ".zone";
-    a.click();
-    URL.revokeObjectURL(a.href);
-}
-</script>';
         } else {
             $line .= '<p class="text-muted">' . ui_language::translate('Zone file not yet generated. Use the Sync button to generate it.') . '</p>';
         }
@@ -769,7 +743,7 @@ function downloadZone(domain) {
         $line .= '<form id="dnsSelectForm" name="DisplayDNS" action="./?module=dns_manager&action=DisplayRecords" method="post">';
         $line .= "<br><br>";
         $line .= "<table class=\"zform\"><tr>";
-        $line .= '<td><select name="inDomain" id="inDomain" onchange="dnsDomainChanged(this.value)">';
+        $line .= '<td><select name="inDomain" id="inDomain">';
         $line .= '<option value="" selected="selected">-- ' . ui_language::translate("Select a domain") . ' --</option>';
         $sql = $zdbh->prepare(
             "SELECT vh_id_pk, vh_name_vc FROM x_vhosts
@@ -784,9 +758,9 @@ function downloadZone(domain) {
         }
         $line .= "</select></td>";
         $line .= "<td>";
-        $line .= '<button type="button" id="btnEditDomain" class="btn btn-lg disabled" onclick="dnsSubmitAction(\'DisplayRecords\')"><i class="bi bi-pencil"></i>  ' . ui_language::translate("Edit") . '</button>';
+        $line .= '<button type="button" id="btnEditDomain" class="btn btn-lg disabled" data-call="dnsSubmitAction" data-args="[&quot;DisplayRecords&quot;]"><i class="bi bi-pencil"></i>  ' . ui_language::translate("Edit") . '</button>';
         $line .= '&nbsp;';
-        $line .= '<button type="button" id="btnRegenZone" class="btn btn-lg disabled" onclick="dnsSubmitAction(\'RegenerateZone\')"><i class="bi bi-arrow-clockwise"></i>  ' . ui_language::translate("Sync") . '</button>';
+        $line .= '<button type="button" id="btnRegenZone" class="btn btn-lg disabled" data-call="dnsSubmitAction" data-args="[&quot;RegenerateZone&quot;]"><i class="bi bi-arrow-clockwise"></i>  ' . ui_language::translate("Sync") . '</button>';
         $line .= "</td></tr></table>";
         $line .= self::getCSFR_Tag();
         $line .= '</form>';
@@ -807,40 +781,17 @@ function downloadZone(domain) {
             $line .= '<p>' . ui_language::translate("Domains without DNS records") . ':</p>';
             $line .= '<form id="dnsCreateForm" action="./?module=dns_manager&action=CreateDefaultRecords" method="post">';
             $line .= "<table class=\"zform\"><tr>";
-            $line .= '<td><select name="inDomain" id="inDomainCreate" onchange="dnsCreateChanged(this.value)">';
+            $line .= '<td><select name="inDomain" id="inDomainCreate">';
             $line .= '<option value="" selected="selected">-- ' . ui_language::translate("Select a domain") . ' --</option>';
             foreach ($domainsNoDNS as $d) {
                 $line .= '<option value="' . $d['vh_id_pk'] . '">' . $d['vh_name_vc'] . '</option>';
             }
             $line .= "</select></td>";
-            $line .= '<td><button type="button" id="btnCreateDNS" class="btn btn-lg disabled" onclick="dnsCreateSubmit()"><i class="bi bi-plus-lg"></i>  ' . ui_language::translate("Create") . '</button></td>';
+            $line .= '<td><button type="button" id="btnCreateDNS" class="btn btn-lg disabled" data-call="dnsCreateSubmit"><i class="bi bi-plus-lg"></i>  ' . ui_language::translate("Create") . '</button></td>';
             $line .= "</tr></table>";
             $line .= self::getCSFR_Tag();
             $line .= '</form>';
         }
-
-        $line .= '<script>
-function dnsDomainChanged(val) {
-    var d = !val;
-    document.getElementById("btnEditDomain").classList.toggle("disabled", d);
-    document.getElementById("btnRegenZone").classList.toggle("disabled", d);
-}
-function dnsSubmitAction(action) {
-    var form = document.getElementById("dnsSelectForm");
-    form.action = "./?module=dns_manager&action=" + action;
-    form.submit();
-}
-function dnsCreateChanged(val) {
-    document.getElementById("btnCreateDNS").classList.toggle("disabled", !val);
-}
-function dnsCreateSubmit() {
-    var sel = document.getElementById("inDomainCreate");
-    var name = sel.options[sel.selectedIndex].text;
-    if (confirm("¿Crear registros DNS por defecto para " + name + "?")) {
-        document.getElementById("dnsCreateForm").submit();
-    }
-}
-</script>';
         $line .= '<p>&nbsp;</p>';
         $line .= '</div>';
         return $line;
