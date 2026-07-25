@@ -87,7 +87,7 @@ input[type=submit] {
                     <td colspan="2" align="right">
                         <input type="hidden" name="inDelete" value="<@ EditCurrentMailboxID @>">
                         <button class="button-loader delete btn btn-danger" type="submit" ><i class="bi bi-trash me-1"></i><: Delete :></button>
-                        <button class="button-loader btn btn-secondary" type="button" onclick="window.location.href='./?module=mailboxes';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="button-loader btn btn-secondary" type="button" data-href="./?module=mailboxes"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </td>
                 </tr>
             </table>
@@ -142,7 +142,7 @@ input[type=submit] {
                 <tr>
                     <th>
                         <button class="button-nonloader btn btn-primary" type="submit" id="button-nonloader" name="inSave" id="inSave" value="<& id &>"><i class="bi bi-floppy me-1"></i><: Save :></button>
-                        <button class="button-loader btn btn-secondary" type="button" onclick="window.location.href='./?module=mailboxes';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="button-loader btn btn-secondary" type="button" data-href="./?module=mailboxes"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </th>
                     <td></td>
                 </tr>

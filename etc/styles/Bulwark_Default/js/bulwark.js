@@ -28,6 +28,18 @@ var Sentora = {
         Sentora.modules.dragDrop();
         Sentora.modules.boxes();
 
+        // Typeahead del buscador de módulos: leer la isla de datos JSON (CSP-safe,
+        // sustituye al <script> inline de master.ztml — ver csp_panel.md Fase 2).
+        var moduleJsonEl = document.getElementById('bulwark-module-json');
+        if (moduleJsonEl) {
+            try {
+                var moduleJsonData = JSON.parse(moduleJsonEl.textContent || '[]');
+                Sentora.modules.typeAhead(moduleJsonData);
+            } catch (e) {
+                Sentora.utils.log('No se pudo parsear bulwark-module-json: ' + e);
+            }
+        }
+
         // Enable Bootstrap Pop-overs (BS5: per-element initialization)
         if (typeof bootstrap !== 'undefined') {
             document.querySelectorAll('[rel^=popover]').forEach(function(el) {
@@ -499,12 +511,12 @@ var Sentora = {
 
         // Show Twitter typeAhead with Redirect.
         // Pass in JSON object with Names and URLs
-        typeAhead: function(moduleNames) {
+        typeAhead: function(moduleData) {
             var moduleNames = [];
             var moduleUrls = {};
 
             // Build Arrays
-            $.each(moduleJsonData, function(index, module) {
+            $.each(moduleData || [], function(index, module) {
                 moduleNames.push(module.name);
                 moduleUrls[module.name] = module.url;
             });

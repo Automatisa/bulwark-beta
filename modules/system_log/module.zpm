@@ -39,7 +39,7 @@
 			</div>
 			<div class="col-sm-4 text-end">
 				<form action="./?module=system_log&action=PurgeAllLogs" method="post"
-					  onsubmit="return confirm('¿Seguro que quieres borrar TODOS los logs del sistema?');">
+					  data-confirm="¿Seguro que quieres borrar TODOS los logs del sistema?">
 					<@ CSFR_Tag @>
 					<label style="display:block;margin-bottom:4px;font-weight:normal;">&nbsp;</label>
 					<button type="submit" class="btn btn-danger">

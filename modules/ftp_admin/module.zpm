@@ -65,7 +65,7 @@
             <div class="tab-pane active show" id="tab-selfsigned">
                 <p>Genera un certificado RSA 2048 autofirmado válido por 10 años con el hostname del servidor.</p>
                 <form action="./?module=ftp_admin&action=GenerateCert" method="post"
-                      onsubmit="return confirm('¿Regenerar el certificado autofirmado? El certificado actual se perderá. Deberás reiniciar ProFTPD para aplicarlo.');">
+                      data-confirm="¿Regenerar el certificado autofirmado? El certificado actual se perderá. Deberás reiniciar ProFTPD para aplicarlo.">
                     <@ CSFR_Tag @>
                     <button type="submit" class="btn btn-warning">
                         <span class="bi bi-award"></span> Regenerar certificado autofirmado
@@ -89,7 +89,7 @@
                         <td>{! expiry !}</td>
                         <td>
                             <form action="./?module=ftp_admin&action=UpdateCertPaths" method="post"
-                                  onsubmit="return confirm('¿Usar el certificado de {! domain !} para ProFTPD? Se actualizará la configuración de ProFTPD y deberás reiniciar el servicio.');">
+                                  data-confirm="¿Usar el certificado de {! domain !} para ProFTPD? Se actualizará la configuración de ProFTPD y deberás reiniciar el servicio.">
                                 <@ CSFR_Tag @>
                                 <input type="hidden" name="inCertPath" value="{! certfile !}">
                                 <input type="hidden" name="inKeyPath"  value="{! keyfile !}">
@@ -126,7 +126,7 @@
                         <span class="help-block" style="font-size:11px;">Fichero con <code>-----BEGIN PRIVATE KEY-----</code> o <code>-----BEGIN RSA PRIVATE KEY-----</code></span>
                     </div>
                     <button type="submit" class="btn btn-primary"
-                            onclick="return confirm('¿Subir e instalar el certificado SSL? Deberás reiniciar ProFTPD para aplicarlo.');">
+                            data-confirm="¿Subir e instalar el certificado SSL? Deberás reiniciar ProFTPD para aplicarlo.">
                         <span class="bi bi-upload"></span> Subir e instalar certificado
                     </button>
                 </form>
@@ -162,7 +162,7 @@
                                value="<@ FtpKeyPath @>">
                     </div>
                     <button type="submit" class="btn btn-primary"
-                            onclick="return confirm('¿Actualizar las rutas del certificado TLS de ProFTPD?');">
+                            data-confirm="¿Actualizar las rutas del certificado TLS de ProFTPD?">
                         <span class="bi bi-floppy"></span> Guardar rutas
                     </button>
                 </form>
@@ -188,7 +188,7 @@
             </div>
             <div class="col-sm-6">
                 <form action="./?module=ftp_admin&action=RestartFtp" method="post"
-                      onsubmit="return confirm('¿Reiniciar ProFTPD? Se interrumpirán las conexiones FTP activas.');">
+                      data-confirm="¿Reiniciar ProFTPD? Se interrumpirán las conexiones FTP activas.">
                     <@ CSFR_Tag @>
                     <button type="submit" class="btn btn-danger w-100">
                         <span class="bi bi-power"></span>
@@ -217,7 +217,7 @@
                 <tr>
                     <th colspan="3">
                         <button class="btn btn-primary" type="submit" name="inSaveSystem"><i class="bi bi-floppy me-1"></i><: Save Changes :></button>
-                        <button class="btn btn-secondary" type="button" onclick="window.location.href='./?module=moduleadmin';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="btn btn-secondary" type="button" data-href="./?module=moduleadmin"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </th>
                 </tr>
             </table>

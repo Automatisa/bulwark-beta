@@ -22,7 +22,7 @@
                     <td colspan="2" align="right">
                         <input type="hidden" name="inDelete" value="<@ EditCurrentFAQID @>">
                         <button class="button-loader delete btn btn-danger" type="submit" ><i class="bi bi-trash me-1"></i><: Delete :></button>
-                        <button class="button-loader btn btn-secondary" type="button" onclick="window.location.href='./?module=faqs';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="button-loader btn btn-secondary" type="button" data-href="./?module=faqs"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </td>
                 </tr>
             </table>

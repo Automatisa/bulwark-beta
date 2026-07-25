@@ -26,7 +26,7 @@
                 <tr>
                     <th colspan="3">
                         <button class="button-loader add-row btn btn-primary" type="submit" id="button" name="inSaveSystem"><i class="bi bi-floppy me-1"></i><: Save Changes :></button>
-                        <button class="add-row btn btn-secondary" type="button" onclick="window.location.href='./?module=moduleadmin';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="add-row btn btn-secondary" type="button" data-href="./?module=moduleadmin"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </th>
                 </tr>
             </table>

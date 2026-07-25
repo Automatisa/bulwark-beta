@@ -111,7 +111,7 @@
                     <td colspan="2" align="right">
                         <input type="hidden" name="inDelete" value="<@ CurrentID @>">
                         <button class="delete btn btn-danger" type="submit" ><i class="bi bi-trash me-1"></i><: Delete :></button>
-                        <button class="btn btn-secondary" type="button" onclick="window.location.href='./?module=domains';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="btn btn-secondary" type="button" data-href="./?module=domains"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </td>
                 </tr>
             </table>

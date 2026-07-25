@@ -100,7 +100,7 @@ input[type=submit] {
                     <th colspan="2" align="right">
                         <input type="hidden" name="inDelete" value="<@ EditCurrentID @>">
                         <button class="button-loader delete btn btn-danger" type="submit" ><i class="bi bi-trash me-1"></i><: Delete :></button>
-                        <button class="button-loader btn btn-secondary" type="button" onclick="window.location.href='./?module=manage_clients';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="button-loader btn btn-secondary" type="button" data-href="./?module=manage_clients"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </th>
                 </tr>
             </table>
@@ -191,7 +191,7 @@ input[type=submit] {
                     <th><input type="hidden" name="inClientID" value="<@ EditCurrentID @>" /></th>
                     <td>
                         <button class="button-nonloader btn btn-primary" type="submit" id="button-nonloader " name="inSubmit" value="Save"><i class="bi bi-floppy me-1"></i><: Save :></button>
-                        <button class="button-loader btn btn-secondary" type="button" onclick="window.location.href='./?module=manage_clients';return false;"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
+                        <button class="button-loader btn btn-secondary" type="button" data-href="./?module=manage_clients"><i class="bi bi-x-circle me-1"></i><: Cancel :></button>
                     </td>
                 </tr>
             </table>

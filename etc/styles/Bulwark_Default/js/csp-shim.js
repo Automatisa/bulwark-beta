@@ -5,12 +5,15 @@
  * Sustituye los patrones inline por atributos data-* + listeners delegados (un solo listener en
  * document, funciona con contenido añadido dinámicamente):
  *   onclick="window.location.href='X';return false;"  ->  data-href="X"
- *   onclick="return confirm('msg')"                    ->  data-confirm="msg"  (en <a>)
+ *   onclick="return confirm('msg')"                    ->  data-confirm="msg"  (en <a>/<button>)
  *   onsubmit="return confirm('msg')"                   ->  data-confirm="msg"  (en <form>)
+ *   onkeypress="return isNumberKey(event)"             ->  data-numeric="int"  (solo dígitos)
+ *   onkeypress="return isNumberKeyOrNeg(event)"        ->  data-numeric="neg"  (dígitos y '-')
  *   onclick="fn('a','b')"                              ->  data-call="fn" data-args='["a","b"]'
  *
  * data-call resuelve la función por nombre en Bulwark.actions (registro) o en window (funciones
- * globales del módulo). Sin eval: los args se leen de un JSON en data-args.
+ * globales del módulo). Sin eval: los args se leen de un JSON en data-args. Si data-pass-event
+ * está presente, el evento se pasa como PRIMER argumento (para handlers tipo openTABS(evt, ...)).
  */
 (function () {
     "use strict";
@@ -41,7 +44,13 @@
         }
         if (el.hasAttribute("data-call")) {
             var fn = resolve(el.getAttribute("data-call"));
-            if (fn) { ev.preventDefault(); fn.apply(el, parseArgs(el)); return; }
+            if (fn) {
+                ev.preventDefault();
+                var args = parseArgs(el);
+                if (el.hasAttribute("data-pass-event")) { args.unshift(ev); }
+                fn.apply(el, args);
+                return;
+            }
         }
         if (el.hasAttribute("data-href")) {
             ev.preventDefault();
@@ -55,5 +64,21 @@
         if (form && form.hasAttribute && form.hasAttribute("data-confirm")) {
             if (!window.confirm(form.getAttribute("data-confirm"))) { ev.preventDefault(); }
         }
+    });
+
+    // --- keypress: filtro numérico (data-numeric="int" | "neg") ---
+    // Reemplaza los onkeypress="return isNumberKey(event)" / isNumberKeyOrNeg(event) del tema.
+    // Deja pasar teclas de control (charCode <= 31: Enter, Backspace, flechas…), dígitos 0-9,
+    // y en modo "neg" también el signo menos (para valores tipo -1 = ilimitado).
+    document.addEventListener("keypress", function (ev) {
+        var el = ev.target.closest("[data-numeric]");
+        if (!el) return;
+        var cc = ev.which || ev.keyCode;
+        if (cc <= 31) return;                       // control: permitir
+        var ok = (cc >= 48 && cc <= 57);            // dígitos
+        if (!ok && el.getAttribute("data-numeric") === "neg" && (cc === 45 || cc === 109)) {
+            ok = true;                              // '-' (teclado principal o numpad)
+        }
+        if (!ok) { ev.preventDefault(); }
     });
 })();

@@ -143,7 +143,7 @@
 </div><!-- /table-responsive -->
                 <hr style="margin:10px 0">
                 <form action="./?module=api_manager&action=BulkDisableApi" method="post" style="display:inline"
-                      onsubmit="return confirm('¿Quitar acceso a la API a TODOS los resellers no revocados?')">
+                      data-confirm="¿Quitar acceso a la API a TODOS los resellers no revocados?">
                     <input type="hidden" name="inBulkTarget" value="resellers">
                     <@ CSFR_Tag @>
                     <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-dash-circle me-1"></i>&#9888;&nbsp; Quitar acceso a todos los resellers</button>
@@ -196,7 +196,7 @@
 </div><!-- /table-responsive -->
                 <hr style="margin:10px 0">
                 <form action="./?module=api_manager&action=BulkDisableApi" method="post" style="display:inline"
-                      onsubmit="return confirm('¿Quitar acceso a la API a TODOS los usuarios no revocados?')">
+                      data-confirm="¿Quitar acceso a la API a TODOS los usuarios no revocados?">
                     <input type="hidden" name="inBulkTarget" value="users">
                     <@ CSFR_Tag @>
                     <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-dash-circle me-1"></i>&#9888;&nbsp; Quitar acceso a todos los usuarios</button>
@@ -282,7 +282,7 @@
 </div><!-- /table-responsive -->
         <hr style="margin:10px 0">
         <form action="./?module=api_manager&action=BulkDisableApi" method="post" style="display:inline"
-              onsubmit="return confirm('¿Quitar acceso a la API a TODOS tus clientes no revocados?')">
+              data-confirm="¿Quitar acceso a la API a TODOS tus clientes no revocados?">
             <input type="hidden" name="inBulkTarget" value="clients">
             <@ CSFR_Tag @>
             <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-dash-circle me-1"></i>&#9888;&nbsp; Quitar acceso a todos mis clientes</button>
@@ -458,13 +458,13 @@
                             <button class="btn btn-sm btn-warning" type="submit">{! toggle_label !}</button>
                         </form>
                         <form action="./?module=api_manager&action=RotateToken" method="post" style="display:inline-block;margin:0 2px 2px 0"
-                              onsubmit="return confirm('¿Rotar el token? El valor actual quedará invalidado al instante.')">
+                              data-confirm="¿Rotar el token? El valor actual quedará invalidado al instante.">
                             <input type="hidden" name="inTokenId" value="<& id &>">
                             <@ CSFR_Tag @>
                             <button class="btn btn-sm btn-info" type="submit"><i class="bi bi-arrow-repeat me-1"></i>Rotar</button>
                         </form>
                         <form action="./?module=api_manager&action=RevokeToken" method="post" style="display:inline-block;margin:0"
-                              onsubmit="return confirm('¿Eliminar este token permanentemente?')">
+                              data-confirm="¿Eliminar este token permanentemente?">
                             <input type="hidden" name="inTokenId" value="<& id &>">
                             <@ CSFR_Tag @>
                             <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-trash me-1"></i>Eliminar</button>
@@ -483,7 +483,7 @@
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
             <h2 style="margin:0"><i class="bi bi-journal-text"></i>Registro de auditoría</h2>
             <form action="./?module=api_manager&action=CleanAuditLog" method="post" style="margin:0"
-                  onsubmit="return confirm('¿Limpiar tus entradas del registro de auditoría? Esta acción no se puede deshacer.')">
+                  data-confirm="¿Limpiar tus entradas del registro de auditoría? Esta acción no se puede deshacer.">
                 <@ CSFR_Tag @>
                 <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-trash me-1"></i>&#128465;&nbsp; Limpiar mis registros</button>
             </form>
