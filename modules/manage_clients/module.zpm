@@ -160,8 +160,8 @@ input[type=submit] {
                 </tr>
                 <tr>
                     <th><: Reset password :>:</th>
-                    <td><input class="inPassword" name="inNewPassword" type="password" id="inPassword" size="20" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" /><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a></td>
-					<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+                    <td><input class="inPassword" name="inNewPassword" type="password" id="inPassword" size="20" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" /><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
+					<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
                 </tr>
 				</table>
 </div><!-- /table-responsive -->

@@ -110,13 +110,13 @@ input[type=submit] {
                 <tr>
                     <th><: Set Password :>:</th>
                     <td><input class="inPassword" type="password" name="inPassword" id="inPassword" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{4,}" required /></td>
-					<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+					<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
                 </tr>
                 <% endloop %>
 				
 				<tr>
                     <th></th>
-                    <td><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a></td>
+                    <td><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
                     <td></td>
                 </tr>
 				
@@ -207,13 +207,13 @@ input[type=submit] {
                             <tr>
                                 <th nowrap="nowrap"><: Password :>:</th>
                                 <td><input class="inPassword" type="password" name="inPassword" id="inPassword" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{4,}" required/></td>
-								<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+								<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
                                 <td></td>
                             </tr>
 							
 							<tr>
 								<th></th>
-								<td><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a></td>
+								<td><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
 								<td></td>
 							</tr>
 							

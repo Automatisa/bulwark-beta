@@ -113,8 +113,8 @@ input[type=submit] {
                 </tr>
                 <tr>
                     <th><: New password :>:</th>
-                    <td><input class="inPassword" name="inPassword" type="password" id="inPassword" size="30" maxlength="50" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required /><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a></td>
-					<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+                    <td><input class="inPassword" name="inPassword" type="password" id="inPassword" size="30" maxlength="50" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required /><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
+					<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
                     <td><button class="button-nonloader btn btn-secondary" type="submit" name="inReset" id="button_nonloader" value="<@ EditCurrentID @>"><i class="bi bi-arrow-clockwise me-1"></i><: Reset Password :>
                         </button>
                         <button class="button-loader btn btn-secondary" type="button" data-href="./?module=ftp_management"><i class="bi bi-x-circle me-1"></i><: Cancel :></button></td>
@@ -184,8 +184,8 @@ input[type=submit] {
                             </tr>
                             <tr>
                                 <th><: Password :>:</th>
-                                <td><input class="inPassword" name="inPassword" type="password" id="inPassword" size="30" maxlength="50" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required/><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a></td>
-								<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+                                <td><input class="inPassword" name="inPassword" type="password" id="inPassword" size="30" maxlength="50" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required/><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
+								<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
                             </tr>					
 						</table>
 </div><!-- /table-responsive -->

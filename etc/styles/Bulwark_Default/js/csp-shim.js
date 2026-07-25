@@ -39,20 +39,26 @@
     // --- click: data-show / data-hide / data-toggle-vis / data-href / data-confirm / data-call ---
     document.addEventListener("click", function (ev) {
         var el = ev.target.closest(
-            "[data-href],[data-confirm],[data-call],[data-show],[data-hide],[data-toggle-vis],[data-password-toggle]");
+            "[data-href],[data-confirm],[data-call],[data-show],[data-hide],[data-toggle-vis]," +
+            "[data-password-toggle],[data-password-show],[data-check]");
         if (!el) return;
 
         // Mostrar/ocultar/alternar visibilidad (sustituye show_div/hide_div/toggle_visibility).
         // NO hacemos preventDefault salvo en <a>, porque muchos disparadores son radios/checkboxes
         // y bloquear su acción por defecto impediría seleccionarlos.
         if (el.hasAttribute("data-show") || el.hasAttribute("data-hide") ||
-            el.hasAttribute("data-toggle-vis") || el.hasAttribute("data-password-toggle")) {
+            el.hasAttribute("data-toggle-vis") || el.hasAttribute("data-password-toggle") ||
+            el.hasAttribute("data-password-show") || el.hasAttribute("data-check")) {
             var sEl = byId(el.getAttribute("data-show"));   if (sEl) sEl.style.display = "block";
             var hEl = byId(el.getAttribute("data-hide"));   if (hEl) hEl.style.display = "none";
             var tEl = byId(el.getAttribute("data-toggle-vis"));
             if (tEl) tEl.style.display = (tEl.style.display === "none" ? "block" : "none");
             var pEl = byId(el.getAttribute("data-password-toggle"));
             if (pEl) pEl.type = (pEl.type === "password" ? "text" : "password");
+            var psEl = byId(el.getAttribute("data-password-show"));
+            if (psEl) psEl.type = "text";                         // revelar (no alternar)
+            var ckEl = byId(el.getAttribute("data-check"));
+            if (ckEl) ckEl.checked = true;                        // marcar checkbox
             if (el.tagName === "A") ev.preventDefault();
             // sin return: no interfiere con otras acciones data-* del mismo elemento
         }

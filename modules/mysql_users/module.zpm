@@ -199,9 +199,9 @@ input[type=submit] {
                 <tr>
                     <th nowrap="nowrap"><: Password :>:</th>
                     <td width="250px">
-                        <input class="inPassword" type="password" name="inResetPW" id="inPassword" value="" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required /><a href="#" class="link-password" id="generate" onclick="passwordShow(), check()" ><: Generate Password :></a>
+                        <input class="inPassword" type="password" name="inResetPW" id="inPassword" value="" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{<@ MinPassLength @>,}" required /><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a>
                     </td>
-					<td><input id="showPassword" type="checkbox" onclick="passwordShowHide()" >Show Password</td>
+					<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
 					<td style="width:20px"></td>
                     <td>
                         <input type="hidden" name="inUser" value="<@ EditCurrentUserID @>">
