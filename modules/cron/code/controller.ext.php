@@ -217,9 +217,9 @@ class module_controller extends ctrl_module
         // --- Script: dominio + ruta dentro ---
         $line .= '<tr valign="top"><th>' . $t('Script') . ':</th><td>';
         $line .= '<div style="margin-bottom:6px;">' . $t('Domain') . ': '
-               . '<select name="inDomain" id="inDomain" onchange="cronPreview()">' . $domOpts . '</select></div>';
+               . '<select name="inDomain" id="inDomain" data-cron-preview>' . $domOpts . '</select></div>';
         $line .= '<div>' . $t('File') . ': '
-               . '<input name="inPath" type="text" id="inPath" size="40" placeholder="public_html/task.php" oninput="cronPreview()"/></div>';
+               . '<input name="inPath" type="text" id="inPath" size="40" placeholder="public_html/task.php" data-cron-preview/></div>';
         $line .= '<div style="margin-top:8px;font-size:12px;color:#555;">' . $t('Full path') . ':<br>'
                . '<code id="cronFull">' . $base . '</code></div>';
         $line .= '<div style="margin-top:6px;font-size:12px;color:#777;">'
@@ -231,24 +231,24 @@ class module_controller extends ctrl_module
 
         // --- Programación ---
         $line .= '<tr valign="top"><th>' . $t('Executed') . ':</th><td>';
-        $line .= '<select name="inSchedMode" id="inSchedMode" onchange="cronMode()">'
+        $line .= '<select name="inSchedMode" id="inSchedMode">'
                . '<option value="simple">' . $t('Simple interval') . '</option>'
                . '<option value="daily">' . $t('Daily at time') . '</option>'
                . '<option value="weekly">' . $t('Weekly') . '</option>'
                . '<option value="monthly">' . $t('Monthly') . '</option>'
                . '<option value="advanced">' . $t('Advanced (cron expression)') . '</option>'
                . '</select>';
-        $line .= '<div id="sched_simple" class="schedbox" style="margin-top:8px;"><select name="inTimingPreset" onchange="cronPreview()">' . $presets . '</select></div>';
+        $line .= '<div id="sched_simple" class="schedbox" style="margin-top:8px;"><select name="inTimingPreset" data-cron-preview>' . $presets . '</select></div>';
         // Bloque hora:minuto compartido por diario/semanal/mensual
         $line .= '<div id="sched_time" class="schedbox" style="display:none;margin-top:8px;">' . $t('At') . ' '
-               . '<select name="inHour" onchange="cronPreview()">' . $hourOpts . '</select> : '
-               . '<select name="inMinute" onchange="cronPreview()">' . $minOpts . '</select></div>';
+               . '<select name="inHour" data-cron-preview>' . $hourOpts . '</select> : '
+               . '<select name="inMinute" data-cron-preview>' . $minOpts . '</select></div>';
         $line .= '<div id="sched_weekday" class="schedbox" style="display:none;margin-top:8px;">' . $t('Day of week') . ' '
-               . '<select name="inWeekday" onchange="cronPreview()">' . $dowOpts . '</select></div>';
+               . '<select name="inWeekday" data-cron-preview>' . $dowOpts . '</select></div>';
         $line .= '<div id="sched_monthday" class="schedbox" style="display:none;margin-top:8px;">' . $t('Day of month') . ' '
-               . '<select name="inMonthday" onchange="cronPreview()">' . $mdayOpts . '</select></div>';
+               . '<select name="inMonthday" data-cron-preview>' . $mdayOpts . '</select></div>';
         $line .= '<div id="sched_advanced" class="schedbox" style="display:none;margin-top:8px;">'
-               . '<input name="inCronExpr" type="text" size="30" placeholder="*/15 * * * *" oninput="cronPreview()"/> '
+               . '<input name="inCronExpr" type="text" size="30" placeholder="*/15 * * * *" data-cron-preview/> '
                . '<small>' . $t('5 fields: minute hour day month weekday') . '</small></div>';
         $line .= '<div style="margin-top:8px;font-size:12px;color:#555;">' . $t('Schedule') . ': <b><span id="cronHuman">—</span></b> '
                . '<code id="cronExpr" style="margin-left:6px;"></code></div>';
@@ -261,44 +261,9 @@ class module_controller extends ctrl_module
         // JS: cambio de modo + vista previa de ruta y horario (CSP permite inline).
         $baseJs = json_encode(ctrl_options::GetSystemOption('hosted_dir') . $currentuser['username'] . '/');
         $dows = json_encode($dowNames);
-        $line .= <<<JS
-<script>
-(function(){
- var base=$baseJs, dowNames=$dows;
- window.cronMode=function(){
-   var m=document.getElementById('inSchedMode').value;
-   function show(id,on){ document.getElementById(id).style.display=on?'block':'none'; }
-   show('sched_simple', m==='simple');
-   show('sched_time', m==='daily'||m==='weekly'||m==='monthly');
-   show('sched_weekday', m==='weekly');
-   show('sched_monthday', m==='monthly');
-   show('sched_advanced', m==='advanced');
-   cronPreview();
- };
- function two(n){return (n<10?'0':'')+n;}
- window.cronPreview=function(){
-   var f=document.getElementById('cronCreateForm'); if(!f) return;
-   // ruta
-   var dom=f.inDomain.value, p=(f.inPath.value||'').replace(/\\\\/g,'/').replace(/^\\/+/,'');
-   var rel = p ? (dom? 'web/'+dom+'/'+p : p) : '';
-   document.getElementById('cronFull').textContent = base + rel;
-   // horario
-   var m=f.inSchedMode.value, expr='', human='';
-   function gv(n){return f[n]?parseInt(f[n].value,10):0;}
-   if(m==='simple'){ expr=f.inTimingPreset.value; human=f.inTimingPreset.options[f.inTimingPreset.selectedIndex].text; }
-   else if(m==='daily'){ var h=gv('inHour'),mi=gv('inMinute'); expr=mi+' '+h+' * * *'; human='Cada día a las '+two(h)+':'+two(mi); }
-   else if(m==='weekly'){ var h=gv('inHour'),mi=gv('inMinute'),w=gv('inWeekday'); expr=mi+' '+h+' * * '+w; human='Cada '+dowNames[w]+' a las '+two(h)+':'+two(mi); }
-   else if(m==='monthly'){ var h=gv('inHour'),mi=gv('inMinute'),d=gv('inMonthday'); expr=mi+' '+h+' '+d+' * *'; human='El día '+d+' de cada mes a las '+two(h)+':'+two(mi); }
-   else if(m==='advanced'){ expr=(f.inCronExpr.value||'').trim(); human='Expresión personalizada'; }
-   document.getElementById('cronExpr').textContent=expr;
-   document.getElementById('cronHuman').textContent=human;
- };
- // Los modos daily/weekly/monthly comparten Hora:Minuto -> los ponemos también en weekly/monthly clonando.
- document.addEventListener('DOMContentLoaded',function(){ if(document.getElementById('inSchedMode')){ cronMode(); } });
- if(document.getElementById('inSchedMode')){ cronMode(); }
-})();
-</script>
-JS;
+        $cronIsland = json_encode(['base' => ctrl_options::GetSystemOption('hosted_dir') . $currentuser['username'] . '/', 'dow' => $dowNames], JSON_UNESCAPED_UNICODE);
+        $line .= '<script type="application/json" id="cron-data">' . $cronIsland . '</script>';
+        $line .= '<script src="modules/cron/assets/cron.js"></script>';
         return $line;
     }
 
