@@ -56,11 +56,14 @@ if (!headers_sent()) {
     header('X-XSS-Protection: 0');
     header(
         "Content-Security-Policy: default-src 'self'; "
-        // 'unsafe-eval' retirado (Fase 1): jQuery 3.7.1 ejecuta scripts vía DOMEval (inyecta un
-        // <script>, gobernado por script-src), no window.eval; Chart.js y el JS propio no usan
-        // eval/new Function. 'unsafe-inline' se mantiene hasta refactorizar el tema legacy (70
-        // manejadores onclick + 2 bloques <script> inline) — ver csp_panel.md, Fase 2.
-        . "script-src 'self' 'unsafe-inline'; "
+        // Fase 1: 'unsafe-eval' retirado (jQuery 3.7.1 usa DOMEval, no window.eval; Chart.js y el
+        // JS propio no usan eval/new Function). Fase 2 COMPLETA: 'unsafe-inline' retirado — todos
+        // los manejadores inline (onclick/onsubmit/onkeypress…) y bloques <script> del tema y de
+        // los módulos se migraron a delegación por data-* (csp-shim.js) y ficheros .js externos.
+        // Ver csp_panel.md. (Las páginas popup launchbackup/dobackup se sirven fuera de index.php
+        // y de esta CSP.) El vector XSS de scripts queda cerrado; style-src sigue con 'unsafe-inline'
+        // (Fase 3, pendiente: 275 style= inline -> clases CSS; riesgo CSS-injection << script).
+        . "script-src 'self'; "
         . "style-src 'self' 'unsafe-inline'; "
         . "img-src 'self' data:; "
         . "font-src 'self' data:; "
