@@ -141,7 +141,7 @@ function BuildRegularHttpVhost($rowvhost, $vhostIp, $vhostPort, $serveralias, $u
     $line .= "# Custom Global Settings (if any exist)" . fs_filehandler::NewLine();
     $line .= ctrl_options::GetSystemOption('global_vhcustom') . fs_filehandler::NewLine();
     $line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-    $line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+    $line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
     $line .= "</virtualhost>" . fs_filehandler::NewLine();
     $line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
     $line .= fs_filehandler::NewLine();
@@ -172,6 +172,21 @@ function sanitizeVhCustom(?string $raw): string
         $clean[] = $line;
     }
     return implode("\n", $clean);
+}
+
+// Directivas comunes al final de CADA vhost de cliente: cabeceras de seguridad "seguras" (no
+// rompen sitios; recomendadas por internet.nl / NCSC-NL) + las directivas personalizadas del
+// usuario ya saneadas. NO se aplica al vhost del panel (ese fija sus propias cabeceras, incl. CSP).
+//  - X-Content-Type-Options: nosniff  -> evita MIME sniffing.
+//  - Referrer-Policy: strict-origin-when-cross-origin -> default moderno de navegadores.
+// (No se fuerza CSP: una CSP estricta rompe apps de cliente; queda como decision por dominio.)
+function bulwark_client_directives(?string $customRaw): string
+{
+    $h  = '# Cabeceras de seguridad (Bulwark, recomendadas)' . fs_filehandler::NewLine();
+    $h .= 'Header always set X-Content-Type-Options "nosniff"' . fs_filehandler::NewLine();
+    $h .= 'Header always set Referrer-Policy "strict-origin-when-cross-origin"' . fs_filehandler::NewLine();
+    $custom = sanitizeVhCustom($customRaw);
+    return ($custom !== '') ? $h . $custom : $h;
 }
 
 function WriteVhostConfigFile() {
@@ -545,7 +560,7 @@ function WriteVhostConfigFile() {
 				$line .= ctrl_options::GetSystemOption('dir_index') . fs_filehandler::NewLine();
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
 				$line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= fs_filehandler::NewLine();
@@ -580,7 +595,7 @@ function WriteVhostConfigFile() {
 				$line .= fs_filehandler::NewLine();
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();	
 				$line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= fs_filehandler::NewLine();
@@ -615,7 +630,7 @@ function WriteVhostConfigFile() {
 				$line .= ctrl_options::GetSystemOption('dir_index') . fs_filehandler::NewLine();
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
 				$line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= fs_filehandler::NewLine();
@@ -651,7 +666,7 @@ function WriteVhostConfigFile() {
 				$line .= fs_filehandler::NewLine();
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
 							
 				$line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
@@ -690,7 +705,7 @@ function WriteVhostConfigFile() {
 				$line .= ctrl_options::GetSystemOption('global_vhcustom') . fs_filehandler::NewLine();
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
 							
 				$line .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
@@ -792,7 +807,7 @@ function WriteVhostConfigFile() {
 		
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 		
 				// End Virtual Host Settings
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
@@ -879,7 +894,7 @@ function WriteVhostConfigFile() {
 		
 				// Client custom vh entry
 				$line .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-				$line .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+				$line .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
 		
 				// End Virtual Host Settings
 				$line .= "</virtualhost>" . fs_filehandler::NewLine();
@@ -1069,7 +1084,7 @@ function BuildStaticVhostBlock(
         $b .= ctrl_options::GetSystemOption('global_vhcustom') . fs_filehandler::NewLine();
     }
     $b .= "# Custom VH settings (if any exist)" . fs_filehandler::NewLine();
-    $b .= sanitizeVhCustom($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
+    $b .= bulwark_client_directives($rowvhost['vh_custom_tx']) . fs_filehandler::NewLine();
     $b .= "</virtualhost>" . fs_filehandler::NewLine();
     $b .= "# END DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
     $b .= fs_filehandler::NewLine();
