@@ -112,7 +112,7 @@ class module_controller extends ctrl_module
         // Acciones
         $out .= '<form method="post" action="./?module=backup_admin&action=ProcessQueueNow" style="display:inline">' . $csrf
               . '<button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-play-circle me-1"></i>Procesar cola ahora</button></form> ';
-        $out .= '<form method="post" action="./?module=backup_admin&action=ClearQueue" style="display:inline" onsubmit="return confirm(\'¿Vaciar las entradas terminadas (done/error) de la cola?\');">' . $csrf
+        $out .= '<form method="post" action="./?module=backup_admin&action=ClearQueue" style="display:inline" data-confirm="¿Vaciar las entradas terminadas (done/error) de la cola?">' . $csrf
               . '<button class="btn btn-secondary btn-sm" type="submit"><i class="bi bi-trash me-1"></i>Vaciar terminadas</button></form>';
 
         // Programaciones

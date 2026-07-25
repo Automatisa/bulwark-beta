@@ -572,7 +572,7 @@ class module_controller extends ctrl_module
 
         // Botón "Borrar registro" (con confirmación y CSRF)
         $html .= '<form method="post" action="./?module=backupmgr&action=ClearBackupLog" '
-               . 'onsubmit="return confirm(\'¿Borrar TODO el registro de copias? Esta acción no se puede deshacer.\');">'
+               . 'data-confirm="¿Borrar TODO el registro de copias? Esta acción no se puede deshacer.">'
                . self::getCSFR_Tag()
                . '<button class="btn btn-danger" type="submit"><i class="bi bi-trash me-1"></i>Borrar registro</button>'
                . '</form>';

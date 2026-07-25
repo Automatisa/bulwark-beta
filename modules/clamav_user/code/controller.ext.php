@@ -270,7 +270,7 @@ class module_controller extends ctrl_module
                   . runtime_csfr::Token()
                   . '<input type="hidden" name="qname" value="' . $qenc . '">'
                   . '<button type="submit" class="btn btn-sm btn-warning"'
-                  . ' onclick="return confirm(\'¿Solicitar restauración al administrador?\')">'
+                  . ' data-confirm="¿Solicitar restauración al administrador?">'
                   . '<span class="bi bi-share"></span> Restaurar'
                   . '</button></form>';
 
@@ -292,7 +292,7 @@ class module_controller extends ctrl_module
                 . runtime_csfr::Token()
                 . '<input type="hidden" name="qname" value="' . $qenc . '">'
                 . '<button type="submit" class="btn btn-sm btn-danger"'
-                . ' onclick="return confirm(\'¿Eliminar definitivamente este archivo en cuarentena? Esta acción no se puede deshacer.\')">'
+                . ' data-confirm="¿Eliminar definitivamente este archivo en cuarentena? Esta acción no se puede deshacer.">'
                 . '<span class="bi bi-trash"></span> Borrar'
                 . '</button></form>'
                 . '</td></tr>';
@@ -302,7 +302,7 @@ class module_controller extends ctrl_module
             . '<form method="post" action="./?module=clamav_user&action=DeleteAllQuarantine" style="display:inline">'
             . runtime_csfr::Token()
             . '<button type="submit" class="btn btn-sm btn-danger"'
-            . ' onclick="return confirm(\'¿Eliminar TODOS los archivos en cuarentena? Esta acción no se puede deshacer.\')">'
+            . ' data-confirm="¿Eliminar TODOS los archivos en cuarentena? Esta acción no se puede deshacer.">'
             . '<span class="bi bi-trash"></span> Borrar todos los detectados'
             . '</button></form></div>';
 

@@ -315,7 +315,7 @@ class module_controller extends ctrl_module
                     }
                     $line .= "<tr valign=\"top\"><th nowrap=\"nowrap\">" . ui_language::translate($row['so_cleanname_vc']) . "</th><td>" . $fieldhtml . "</td><td>" . ui_language::translate($row['so_desc_tx']) . "</td></tr>";
                 }
-                $line .= "<tr><th colspan=\"3\"><button class=\"button-loader btn btn-primary\" type=\"submit\" id=\"button\" name=\"inSaveSystem\"><i class=\"bi bi-floppy me-1\"></i>" . ui_language::translate("Save Changes") . "</button>  <button class=\"button-loader btn btn-secondary\" type=\"button\" onclick=\"window.location.href='./?module=moduleadmin';return false;\"><i class=\"bi bi-x-circle me-1\"></i>" . ui_language::translate("Cancel") . "</button></tr>";
+                $line .= "<tr><th colspan=\"3\"><button class=\"button-loader btn btn-primary\" type=\"submit\" id=\"button\" name=\"inSaveSystem\"><i class=\"bi bi-floppy me-1\"></i>" . ui_language::translate("Save Changes") . "</button>  <button class=\"button-loader btn btn-secondary\" type=\"button\" data-href=\"./?module=moduleadmin\"><i class=\"bi bi-x-circle me-1\"></i>" . ui_language::translate("Cancel") . "</button></tr>";
             }
         }
         $line .= "</table>";

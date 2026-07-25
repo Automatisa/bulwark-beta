@@ -521,7 +521,7 @@ class module_controller extends ctrl_module
         $csrf = self::getCSFR_Tag();
         return '<form method="post" action="./?module=antispam_admin&action=RestartRspamd&tab=status" style="display:inline;">'
              . $csrf
-             . '<button type="submit" class="btn btn-warning" onclick="return confirm(\'Reiniciar rspamd ahora?\')"><i class="bi bi-arrow-repeat me-1"></i>Reiniciar servicio</button></form>';
+             . '<button type="submit" class="btn btn-warning" data-confirm="Reiniciar rspamd ahora?"><i class="bi bi-arrow-repeat me-1"></i>Reiniciar servicio</button></form>';
     }
 
     static function getAntispamStatusBadge()
@@ -813,7 +813,7 @@ class module_controller extends ctrl_module
              . '<form method="post" action="./?module=antispam_admin&action=FlushGreylist&tab=greylist" style="display:inline;">'
              . $csrf
              . '<button type="submit" class="btn btn-warning btn-sm"'
-             . ' onclick="return confirm(\'Limpiar greylist?\')"><i class="bi bi-x-circle me-1"></i>Limpiar greylist</button>'
+             . ' data-confirm="Limpiar greylist?"><i class="bi bi-x-circle me-1"></i>Limpiar greylist</button>'
              . '</form>';
     }
 

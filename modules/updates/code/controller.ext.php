@@ -130,7 +130,7 @@ class module_controller extends ctrl_module
 
         if ($admin && $running === '' && $behind > 0) {
             $h .= '<form method="post" action="./?module=updates&action=UpdatePanel" style="display:inline;">' . $csrf
-                . '<button type="submit" class="btn btn-primary" onclick="return confirm(\'Actualizar el panel ahora (git pull)? Las migraciones de BD no son automáticas.\')">'
+                . '<button type="submit" class="btn btn-primary" data-confirm="Actualizar el panel ahora (git pull)? Las migraciones de BD no son automáticas.">'
                 . '<i class="bi bi-cloud-arrow-down me-1"></i>Actualizar panel</button></form>';
         } elseif ($running === 'panel') {
             $h .= '<div class="alert alert-info" style="margin:0;"><i class="bi bi-hourglass-split me-1"></i>Actualizando el panel… <small>(la página se refresca sola)</small></div>';
@@ -238,7 +238,7 @@ class module_controller extends ctrl_module
                          . addslashes((string)($p['candidate'] ?? '')) . ')? Puede requerir migración de config y reiniciar el servicio.';
                 $action = '<form method="post" action="./?module=updates&action=VerifyMajor" style="display:inline;">' . $csrf
                         . '<input type="hidden" name="inPkg" value="' . $name . '">'
-                        . '<button type="submit" class="btn btn-sm btn-danger" onclick="return confirm(\'' . htmlspecialchars($confirm, ENT_QUOTES) . '\')">'
+                        . '<button type="submit" class="btn btn-sm btn-danger" data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '">'
                         . '<i class="bi bi-arrow-up-circle me-1"></i>Verificar y actualizar</button></form>';
             } elseif ($state === 'subversion') {
                 $action = '<span class="text-muted" style="font-size:12px;">automática</span>';
@@ -311,7 +311,7 @@ class module_controller extends ctrl_module
                          . ' <small>(la página se refresca sola)</small></div>';
             } else {
                 $mk = function ($action, $label, $cls, $confirm) use ($csrf) {
-                    $onclick = $confirm ? ' onclick="return confirm(\'' . $confirm . '\')"' : '';
+                    $onclick = $confirm ? ' data-confirm="' . $confirm . '"' : '';
                     return '<form method="post" action="./?module=updates&action=' . $action . '" style="display:inline;">'
                          . $csrf
                          . '<button type="submit" class="btn ' . $cls . '"' . $onclick . '>' . $label . '</button></form> ';

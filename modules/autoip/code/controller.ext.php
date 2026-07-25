@@ -389,7 +389,7 @@ class module_controller extends ctrl_module {
                     }
                     $acc .= '<form method="post" action="./?module=autoip&action=RemoveIP" style="display:inline;">' . $csrf
                           . '<input type="hidden" name="inIpId" value="' . (int)$p['ip_id_pk'] . '">'
-                          . '<button type="submit" class="btn btn-sm btn-danger" onclick="return confirm(\'Quitar ' . $ip . ' del pool?\')">Eliminar</button></form>';
+                          . '<button type="submit" class="btn btn-sm btn-danger" data-confirm="Quitar ' . $ip . ' del pool?">Eliminar</button></form>';
                 } else {
                     $acc .= '<span class="text-muted" style="font-size:12px;">en uso por dominios</span>';
                 }

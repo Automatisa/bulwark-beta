@@ -628,7 +628,7 @@ class module_controller extends ctrl_module
                     <input type="hidden" name="reqfile" value="' . $fenc . '">
                     ' . runtime_csfr::Token() . '
                     <button type="submit" class="btn btn-sm btn-success"
-                      onclick="return confirm(\'¿Aprobar y restaurar este archivo?\')">
+                      data-confirm="¿Aprobar y restaurar este archivo?">
                       <span class="bi bi-check-lg"></span> Aprobar
                     </button>
                   </form>
@@ -636,7 +636,7 @@ class module_controller extends ctrl_module
                     <input type="hidden" name="reqfile" value="' . $fenc . '">
                     ' . runtime_csfr::Token() . '
                     <button type="submit" class="btn btn-sm btn-danger"
-                      onclick="return confirm(\'¿Rechazar esta solicitud?\')">
+                      data-confirm="¿Rechazar esta solicitud?">
                       <span class="bi bi-x-lg"></span> Rechazar
                     </button>
                   </form>

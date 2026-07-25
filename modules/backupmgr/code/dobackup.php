@@ -80,7 +80,7 @@ if (isset($_GET['id']) && $_GET['id'] != "") {
         if ($backup = ExecuteBackup($userid, $dbvals['ac_user_vc'], $download, $mode)) {
             $safe_file = htmlspecialchars(basename($backup), ENT_QUOTES, 'UTF-8');
             echo "<p>Ready to download file: <b>" . $safe_file . "</b></p>";
-            echo "<button class=\"fg-button ui-state-default ui-corner-all\" type=\"button\" onclick=\"window.location.href='downloadbackup.php?id=" . $userid . "&amp;file=" . $safe_file . "';return false;\">Download Now</button>";
+            echo "<button class=\"fg-button ui-state-default ui-corner-all\" type=\"button\" data-href=\"downloadbackup.php?id=" . $userid . "&amp;file=" . $safe_file . "\">Download Now</button>";
             echo "<button class=\"fg-button ui-state-default ui-corner-all\" type=\"button\" value=\"Close Window\" onClick=\"return window.close()\">Close Window</button>";
         } else {
             echo "Could not find user!";
