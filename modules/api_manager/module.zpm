@@ -104,7 +104,7 @@
                 <div style="margin-bottom:10px">
                     <input type="text" class="form-control" style="max-width:320px;display:inline-block"
                            placeholder="Buscar reseller..."
-                           oninput="apiFilterTable(this,'tbl-resellers',0)">
+                           data-filter-table="tbl-resellers">
                 </div>
                 <div class="table-responsive"><table class="table table-striped table-sm" id="tbl-resellers">
                     <thead>
@@ -155,7 +155,7 @@
                 <div style="margin-bottom:10px">
                     <input type="text" class="form-control" style="max-width:320px;display:inline-block"
                            placeholder="Buscar usuario..."
-                           oninput="apiFilterTable(this,'tbl-users',0)">
+                           data-filter-table="tbl-users">
                 </div>
                 <div class="table-responsive"><table class="table table-striped table-sm" id="tbl-users">
                     <thead>
@@ -253,7 +253,7 @@
         <div style="margin-bottom:10px">
             <input type="text" class="form-control" style="max-width:320px;display:inline-block"
                    placeholder="Buscar cliente..."
-                   oninput="apiFilterTable(this,'tbl-clients',0)">
+                   data-filter-table="tbl-clients">
         </div>
         <div class="table-responsive"><table class="table table-striped table-sm" id="tbl-clients">
             <thead>
@@ -335,7 +335,7 @@
             <strong>&#9888; Copia el token ahora — no se volverá a mostrar nunca más:</strong><br><br>
             <code id="api-token-display" style="font-size:1.1em;user-select:all"><@ NewToken @></code>
             &nbsp;
-            <button type="button" class="btn btn-sm btn-secondary" onclick="copyApiToken()"><i class="bi bi-clipboard me-1"></i>Copiar</button>
+            <button type="button" class="btn btn-sm btn-secondary" data-call="copyApiToken"><i class="bi bi-clipboard me-1"></i>Copiar</button>
         </div>
     </div>
     <% endif %>
@@ -357,8 +357,7 @@
                 <tr>
                     <th>Scope:</th>
                     <td>
-                        <select name="inTokenScope" id="inTokenScope" class="form-control" style="max-width:260px"
-                                onchange="checkUnboundWarning()">
+                        <select name="inTokenScope" id="inTokenScope" class="form-control" style="max-width:260px">
                             <@ ScopeOptionsHtml @>
                         </select>
                         <p class="help-block" style="margin-top:4px">
@@ -393,8 +392,7 @@
                     <th>Vincular a usuario <small>(opcional)</small>:</th>
                     <td>
                         <input type="text" id="inTokenUser" name="inTokenUser" class="form-control" style="max-width:260px"
-                               placeholder="username (vacío = sin vincular)"
-                               oninput="checkUnboundWarning()">
+                               placeholder="username (vacío = sin vincular)">
                         <p class="help-block">
                             Si se especifica, el token opera solo sobre los recursos de ese usuario.<br>
                             <span id="unbound-warning" style="display:none;color:#c0392b;font-weight:bold">
@@ -421,7 +419,7 @@
         <div style="margin-bottom:10px">
             <input type="text" class="form-control" style="max-width:320px;display:inline-block"
                    placeholder="Buscar token..."
-                   oninput="apiFilterTable(this,'tbl-tokens',0)">
+                   data-filter-table="tbl-tokens">
         </div>
         <div style="overflow-x:auto">
         <div class="table-responsive"><table class="table table-striped table-sm" id="tbl-tokens">
@@ -519,38 +517,4 @@
 
 </div>
 
-<script>
-function apiFilterTable(input, tableId, colIndex) {
-    var filter = input.value.toLowerCase();
-    var rows   = document.getElementById(tableId).tBodies[0].rows;
-    for (var i = 0; i < rows.length; i++) {
-        var cell = rows[i].cells[colIndex];
-        var text = cell ? (cell.textContent || cell.innerText) : '';
-        rows[i].style.display = text.toLowerCase().indexOf(filter) > -1 ? '' : 'none';
-    }
-}
-function copyApiToken() {
-    var token = document.getElementById('api-token-display').textContent.trim();
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(token).then(function() { alert('Token copiado al portapapeles.'); });
-    } else {
-        var ta = document.createElement('textarea');
-        ta.value = token; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.focus(); ta.select();
-        document.execCommand('copy'); document.body.removeChild(ta);
-        alert('Token copiado al portapapeles.');
-    }
-}
-function checkUnboundWarning() {
-    var userEl  = document.getElementById('inTokenUser');
-    var scopeEl = document.getElementById('inTokenScope');
-    var warn    = document.getElementById('unbound-warning');
-    if (!userEl || !warn) return;
-    var scope = scopeEl ? scopeEl.value : 'read';
-    warn.style.display = (userEl.value.trim() === '' && scope !== 'read') ? 'block' : 'none';
-}
-document.addEventListener('DOMContentLoaded', function() {
-    var scopeSel = document.getElementById('inTokenScope');
-    if (scopeSel) scopeSel.addEventListener('change', checkUnboundWarning);
-});
-</script>
+<script src="modules/api_manager/assets/api_manager.js"></script>
