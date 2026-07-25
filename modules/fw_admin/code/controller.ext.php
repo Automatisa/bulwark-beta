@@ -621,7 +621,7 @@ class module_controller extends ctrl_module
                    . '<td>' . $estado . '</td>'
                    . '<td>'
                    . '<button type="button" class="btn btn-sm btn-warning"'
-                   .   ' onclick="fwDeleteBlock(' . (int)$r['fb_id_pk'] . ',\'' . $ipEsc . '\')">'
+                   .   ' data-fw="deleteBlock" data-id="' . (int)$r['fb_id_pk'] . '" data-ip="' . $ipEsc . '">'
                    . '<span class="bi bi-trash"></span> Eliminar'
                    . '</button>'
                    . '</td></tr>';
@@ -665,7 +665,7 @@ class module_controller extends ctrl_module
                    . '<td>' . $added . '</td>'
                    . '<td>'
                    . '<button type="button" class="btn btn-sm btn-danger"'
-                   .   ' onclick="fwDeleteWhite(' . (int)$r['fw_id_pk'] . ',\'' . $ipEsc . '\')">'
+                   .   ' data-fw="deleteWhite" data-id="' . (int)$r['fw_id_pk'] . '" data-ip="' . $ipEsc . '">'
                    . '<span class="bi bi-trash"></span> Eliminar'
                    . '</button>'
                    . '</td></tr>';
@@ -734,7 +734,7 @@ class module_controller extends ctrl_module
                    . '<td>' . $since . '</td>'
                    . '<td>'
                    . '<button type="button" class="btn btn-sm btn-warning"'
-                   .   ' onclick="fwUnban(\'' . $ipEsc . '\')">'
+                   .   ' data-fw="unban" data-ip="' . $ipEsc . '">'
                    . '<span class="bi bi-check-circle-fill"></span> Desbanear'
                    . '</button>'
                    . '</td></tr>';
@@ -1091,28 +1091,18 @@ class module_controller extends ctrl_module
                    . '<td style="white-space:nowrap;">'
                    // Editar — abre modal con valores actuales
                    . '<button class="btn btn-sm btn-info" type="button"'
-                   .   ' onclick="fwEditRule('
-                   .       $id . ','
-                   .       json_encode($r['fr_action_en'])    . ','
-                   .       json_encode($r['fr_direction_en']) . ','
-                   .       json_encode($r['fr_proto_vc'])     . ','
-                   .       json_encode($r['fr_src_vc'])       . ','
-                   .       $port    . ','
-                   .       $portMax . ','
-                   .       json_encode($r['fr_desc_vc'])      . ','
-                   .       $r['fr_order_in']
-                   .   ')" title="Editar regla">'
+                                      .   ' data-fw="editRule" data-args="' . htmlspecialchars(json_encode([$id, $r['fr_action_en'], $r['fr_direction_en'], $r['fr_proto_vc'], $r['fr_src_vc'], $port, $portMax, $r['fr_desc_vc'], $r['fr_order_in']]), ENT_QUOTES) . '" title="Editar regla">'
                    . '<span class="bi bi-pencil"></span>'
                    . '</button> '
                    // Activar/Desactivar
                    . '<button class="btn btn-sm btn-secondary" type="button"'
-                   .   ' onclick="fwToggleRule(' . $id . ')"'
+                   .   ' data-fw="toggleRule" data-id="' . $id . '"'
                    .   ' title="' . ($enabled ? 'Desactivar' : 'Activar') . '">'
                    . '<i class="bi bi-' . ($enabled ? 'pause' : 'play') . '"></i>'
                    . '</button> '
                    // Eliminar
                    . '<button class="btn btn-sm btn-danger" type="button"'
-                   .   ' onclick="fwDeleteRule(' . $id . ')">'
+                   .   ' data-fw="deleteRule" data-id="' . $id . '">'
                    . '<span class="bi bi-trash"></span>'
                    . '</button></td></tr>';
         }
@@ -1286,7 +1276,7 @@ class module_controller extends ctrl_module
 
         // Botón limpiar todo
         $html .= '<form method="post" action="./?module=fw_admin&action=ClearLoginAttempts&tab=loginattempts"'
-               . ' style="margin-bottom:10px;" onsubmit="return confirm(\'¿Limpiar todo el historial de intentos?\');">'
+               . ' style="margin-bottom:10px;" data-confirm="¿Limpiar todo el historial de intentos?">'
                . $csrf
                . '<input type="hidden" name="inIP" value="">'
                . '<button type="submit" class="btn btn-secondary btn-sm">'

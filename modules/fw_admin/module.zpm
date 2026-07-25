@@ -166,7 +166,7 @@
             <div class="alert alert-info" style="max-width:600px;font-size:12px;margin-top:15px;">
                 <strong>Ajustar umbral:</strong> cambia los valores en
                 <a href="./?module=fw_admin&tab=config" data-bs-toggle="tab"
-                   onclick="document.querySelector(\'#fwTabs a[href=\\"#fw-config\\"]\').click();return false;">
+                   data-fw-tab="config">
                     Configuración
                 </a>
                 → <em>Protección panel: intentos / ventana (s)</em>.
@@ -336,81 +336,4 @@
 
 </div><!-- /zmodule_content -->
 
-<script>
-(function () {
-    "use strict";
-
-    // ---- Activar pestaña según parámetro URL ?tab=xxx ----
-    function getTabParam() {
-        var m = window.location.search.match(/[?&]tab=([a-z]+)/);
-        return m ? m[1] : null;
-    }
-    var tabMap = {
-        status:    '#fw-status',
-        blocked:   '#fw-blocked',
-        whitelist: '#fw-whitelist',
-        sshguard:  '#fw-sshguard',
-        loginattempts: '#fw-loginattempts',
-        rules:     '#fw-rules',
-        config:    '#fw-config'
-    };
-    var tab = getTabParam();
-    if (tab && tabMap[tab]) {
-        document.querySelector('#fwTabs a[href="' + tabMap[tab] + '"]').click();
-    }
-
-    // ---- Acciones de tabla vía formularios ocultos ----
-    window.fwDeleteBlock = function (id, ip) {
-        if (!confirm('¿Eliminar bloqueo de ' + ip + '?')) return;
-        document.getElementById('fwDeleteBlockID').value = id;
-        document.getElementById('fwDeleteBlockForm').submit();
-    };
-
-    window.fwDeleteWhite = function (id, ip) {
-        if (!confirm('¿Eliminar ' + ip + ' de la lista blanca?')) return;
-        document.getElementById('fwDeleteWhiteID').value = id;
-        document.getElementById('fwDeleteWhiteForm').submit();
-    };
-
-    window.fwUnban = function (ip) {
-        if (!confirm('¿Desbanear ' + ip + ' de SSHGuard?\n\nSSHGuard puede volver a banearla si los ataques continúan.')) return;
-        document.getElementById('fwUnbanIP').value = ip;
-        document.getElementById('fwUnbanForm').submit();
-    };
-
-    window.fwDeleteRule = function (id) {
-        if (!confirm('¿Eliminar esta regla pf?')) return;
-        document.getElementById('fwDeleteRuleID').value = id;
-        document.getElementById('fwDeleteRuleForm').submit();
-    };
-
-    window.fwToggleRule = function (id) {
-        document.getElementById('fwToggleRuleID').value = id;
-        document.getElementById('fwToggleRuleForm').submit();
-    };
-
-    window.fwEditRule = function (id, action, direction, proto, src, port, portMax, desc, order) {
-        document.getElementById('editRuleID').value      = id;
-        document.getElementById('editRulePort').value    = port;
-        document.getElementById('editRulePortMax').value = portMax;
-        document.getElementById('editRuleDesc').value    = desc;
-        document.getElementById('editRuleOrder').value   = order;
-
-        // Seleccionar el valor correcto en cada <select>
-        function setSelect(elemId, val) {
-            var sel = document.getElementById(elemId);
-            for (var i = 0; i < sel.options.length; i++) {
-                if (sel.options[i].value === val) { sel.selectedIndex = i; break; }
-            }
-        }
-        setSelect('editRuleAction',    action);
-        setSelect('editRuleDirection', direction);
-        setSelect('editRuleProto',     proto);
-
-        // src: "any" se muestra como vacío en el campo de texto
-        document.getElementById('editRuleSrc').value = (src === 'any') ? '' : src;
-
-        jQuery('#fwEditRuleModal').modal('show');
-    };
-})();
-</script>
+<script src="modules/fw_admin/assets/fw_admin.js"></script>
