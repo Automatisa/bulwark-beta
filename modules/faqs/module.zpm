@@ -40,7 +40,7 @@
                 <tr valign="top">
                     <td>{! allowdelete !}</td>
                     <td><img src="<@ ModulePath @>assets/item.png" width="16" height="16"></td>
-                    <td><a href="#" id="faq_<& id &>_a" onclick="toggle_visibility('<& id &>')"><strong><& question &></strong></a>
+                    <td><a href="#" id="faq_<& id &>_a" data-toggle-vis="<& id &>"><strong><& question &></strong></a>
                         <div id="faq_<& id &>" style="display:none;"><& answer &><br><br></div></td>
                 </tr>
                 <script type="text/javascript">
@@ -68,7 +68,7 @@
 
     <% if AddFAQS %>
     <div class="zform_wrapper">
-        <h2><a href="#" onclick="toggle_visibility('admin_desc')"><img src="<@ ModulePath @>assets/help_small.png" width="16" height="16"></a> <: Add FAQ Item :></h2>
+        <h2><a href="#" data-toggle-vis="admin_desc"><img src="<@ ModulePath @>assets/help_small.png" width="16" height="16"></a> <: Add FAQ Item :></h2>
         <div id="admin_desc" style="display:none;"><: Since you are logged in as an Administrator or a Reseller, you can add and remove FAQ items.  Administrators can see and remove all FAQ items, but Resellers can only remove FAQ items they have created.  Your clients will be able to see any FAQ items you create, plus any FAQ items created by an Administrator. Your clients will not be able to add or remove any FAQ items. :><br><br></div>
         <form action="./?module=faqs&action=AddFaq" method="post">
             <table class="none">
@@ -91,14 +91,3 @@
 
 </div>
 
-<script type="text/javascript">
-    <!--
-    function toggle_visibility(id) {
-        var e = document.getElementById(id);
-        if(e.style.display == 'none')
-            e.style.display = 'block';
-        else
-            e.style.display = 'none';
-    }
-    //-->
-</script>

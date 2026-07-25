@@ -34,10 +34,28 @@
         catch (e) { return [raw]; }
     }
 
-    // --- click: data-href / data-confirm / data-call ---
+    function byId(id) { return id ? document.getElementById(id) : null; }
+
+    // --- click: data-show / data-hide / data-toggle-vis / data-href / data-confirm / data-call ---
     document.addEventListener("click", function (ev) {
-        var el = ev.target.closest("[data-href],[data-confirm],[data-call]");
+        var el = ev.target.closest(
+            "[data-href],[data-confirm],[data-call],[data-show],[data-hide],[data-toggle-vis],[data-password-toggle]");
         if (!el) return;
+
+        // Mostrar/ocultar/alternar visibilidad (sustituye show_div/hide_div/toggle_visibility).
+        // NO hacemos preventDefault salvo en <a>, porque muchos disparadores son radios/checkboxes
+        // y bloquear su acción por defecto impediría seleccionarlos.
+        if (el.hasAttribute("data-show") || el.hasAttribute("data-hide") ||
+            el.hasAttribute("data-toggle-vis") || el.hasAttribute("data-password-toggle")) {
+            var sEl = byId(el.getAttribute("data-show"));   if (sEl) sEl.style.display = "block";
+            var hEl = byId(el.getAttribute("data-hide"));   if (hEl) hEl.style.display = "none";
+            var tEl = byId(el.getAttribute("data-toggle-vis"));
+            if (tEl) tEl.style.display = (tEl.style.display === "none" ? "block" : "none");
+            var pEl = byId(el.getAttribute("data-password-toggle"));
+            if (pEl) pEl.type = (pEl.type === "password" ? "text" : "password");
+            if (el.tagName === "A") ev.preventDefault();
+            // sin return: no interfiere con otras acciones data-* del mismo elemento
+        }
 
         if (el.hasAttribute("data-confirm")) {
             if (!window.confirm(el.getAttribute("data-confirm"))) { ev.preventDefault(); return; }
