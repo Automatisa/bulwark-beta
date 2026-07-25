@@ -455,7 +455,7 @@ class module_controller extends ctrl_module {
 		return '<form action="./?module=sencrypt&action=ForceSSL" method="post" style="display:inline">'
 			. runtime_csfr::Token()
 			. '<input type="hidden" name="inDomain" value="' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '">'
-			. '<input type="checkbox" name="inForce" value="1" ' . $chk . ' onchange="this.form.submit()"> '
+			. '<input type="checkbox" name="inForce" value="1" ' . $chk . ' data-autosubmit> '
 			. ui_language::translate('Force HTTPS')
 			. '</form>';
 	}

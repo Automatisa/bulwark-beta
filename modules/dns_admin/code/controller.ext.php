@@ -244,7 +244,7 @@ class module_controller extends ctrl_module
             foreach ($peers as $p) {
                 $pin = (string)$p['nd_cert_pin_vc'];
                 $shown = $pin !== '' ? $H(substr($pin, 0, 26)) . "…" : "<span class=\"text-muted\">" . ui_language::translate("(se captura en la próxima sync)") . "</span>";
-                $reset = "<form action=\"./?module=dns_admin&action=ClusterTls\" method=\"post\" style=\"margin:0\" onsubmit=\"return confirm('Reiniciar la huella de este peer? Se recapturará (TOFU) en la próxima sincronización.');\">" . runtime_csfr::Token()
+                $reset = "<form action=\"./?module=dns_admin&action=ClusterTls\" method=\"post\" style=\"margin:0\" data-confirm=\"Reiniciar la huella de este peer? Se recapturará (TOFU) en la próxima sincronización.\">" . runtime_csfr::Token()
                        . "<input type=\"hidden\" name=\"inResetPin\" value=\"" . (int)$p['nd_id_pk'] . "\"><button class=\"btn btn-sm btn-outline-secondary\" type=\"submit\"><i class=\"bi bi-arrow-repeat\"></i> " . ui_language::translate("Reiniciar") . "</button></form>";
                 $line .= "<tr><td>" . $H($p['nd_name_vc']) . "</td><td><code>" . $shown . "</code></td><td>" . ($pin !== '' ? $reset : '') . "</td></tr>";
             }

@@ -96,6 +96,12 @@
         }
     });
 
+    // --- change: data-autosubmit (envía el formulario al cambiar; sustituye this.form.submit()) ---
+    document.addEventListener("change", function (ev) {
+        var el = ev.target.closest("[data-autosubmit]");
+        if (el && el.form) el.form.submit();
+    });
+
     // --- submit: data-confirm en <form> ---
     document.addEventListener("submit", function (ev) {
         var form = ev.target;

@@ -437,7 +437,7 @@ class module_controller extends ctrl_module
                 . runtime_csfr::Token()
                 . '<input type="hidden" name="qfile" value="' . $fenc . '">'
                 . '<button type="submit" class="btn btn-sm btn-warning" '
-                . 'onclick="return confirm(\'¿Restaurar \\\'' . $origJs . '\\\' a /var/mail/?\\nHazlo solo si confirmas que es un falso positivo.\');" '
+                . 'data-confirm="¿Restaurar \'' . htmlspecialchars($origName, ENT_QUOTES) . '\' a /var/mail/? Hazlo solo si confirmas que es un falso positivo." '
                 . 'title="Restaurar a /var/mail/ (falso positivo)">'
                 . '<span class="bi bi-share-alt"></span> Restaurar</button></form> ';
 
@@ -446,7 +446,7 @@ class module_controller extends ctrl_module
                 . runtime_csfr::Token()
                 . '<input type="hidden" name="qfile" value="' . $fenc . '">'
                 . '<button type="submit" class="btn btn-sm btn-danger" '
-                . 'onclick="return confirm(\'¿Eliminar permanentemente \\\'' . $origJs . '\\\'?\\nEsta acción no se puede deshacer.\');" '
+                . 'data-confirm="¿Eliminar permanentemente \'' . htmlspecialchars($origName, ENT_QUOTES) . '\'? Esta acción no se puede deshacer." '
                 . 'title="Eliminar permanentemente">'
                 . '<span class="bi bi-trash"></span> Eliminar</button></form>';
 

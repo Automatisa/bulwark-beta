@@ -266,7 +266,7 @@ class module_controller extends ctrl_module
             'btn_toggle'   => $allowed
                 ? '<button class="btn btn-sm btn-secondary" type="submit"><i class="bi bi-dash-circle me-1"></i>Quitar acceso</button>'
                 : '<button class="btn btn-sm btn-success" type="submit"><i class="bi bi-check-circle me-1"></i>Autorizar</button>',
-            'btn_revoke'   => '<button class="btn btn-sm btn-danger" type="submit" onclick="' . $confirm . '"><i class="bi bi-slash-circle me-1"></i>Revocar API</button>',
+            'btn_revoke'   => '<button class="btn btn-sm btn-danger" type="submit" data-confirm="' . htmlspecialchars($confirm, ENT_QUOTES) . '"><i class="bi bi-slash-circle me-1"></i>Revocar API</button>',
             'btn_unrevoke' => '',
         ];
     }
