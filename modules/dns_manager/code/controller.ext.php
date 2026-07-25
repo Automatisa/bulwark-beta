@@ -1587,14 +1587,27 @@ function dnsCreateSubmit() {
                     if ($delete[$NewId] == "false" && !fs_director::CheckForEmptyValue($type[$NewId])) {
                         //HOSTNAME
                         if (isset($hostName[$NewId]) && !fs_director::CheckForEmptyValue($hostName[$NewId]) && $hostName[$NewId] != "@") {
-                            //Check that hostname does not already exist.
-                            $numrows = $zdbh->prepare('SELECT dn_id_pk FROM x_dns WHERE dn_host_vc=:hostName2 AND dn_vhost_fk=:domainID AND dn_deleted_ts IS NULL');
+                            // Conflicto de host. Un mismo host PUEDE tener A y AAAA (doble pila),
+                            // varios MX, etc.; la comprobacion anterior bloqueaba cualquier host
+                            // repetido sin mirar el tipo -> impedia anadir AAAA a un host que ya
+                            // tenia A. Solo es conflicto: (a) un CNAME (debe ser el unico registro
+                            // del host, no coexiste con otros tipos), o (b) un duplicado EXACTO
+                            // (mismo host y mismo tipo).
+                            $numrows = $zdbh->prepare('SELECT dn_type_vc FROM x_dns WHERE dn_host_vc=:hostName2 AND dn_vhost_fk=:domainID AND dn_deleted_ts IS NULL');
                             $hostName2 = $hostName[$NewId];
                             $numrows->bindParam(':hostName2', $hostName2);
                             $numrows->bindParam(':domainID', $domainID);
                             $numrows->execute();
-                            if ($numrows->fetch()) {
-                                self::SetError('Hostnames must be unique.');
+                            $newIsCname = ($type[$NewId] === 'CNAME');
+                            $conflict   = false; $cnameClash = false;
+                            foreach ($numrows as $er) {
+                                if ($newIsCname || $er['dn_type_vc'] === 'CNAME') { $conflict = true; $cnameClash = true; break; }
+                                if ($er['dn_type_vc'] === $type[$NewId])          { $conflict = true; break; }
+                            }
+                            if ($conflict) {
+                                self::SetError($cnameClash
+                                    ? 'Un registro CNAME debe ser el único de ese host (no puede coexistir con otros tipos).'
+                                    : 'Ya existe un registro de ese mismo tipo para ese host.');
                                 return FALSE;
                             }
 
