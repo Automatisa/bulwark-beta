@@ -38,7 +38,7 @@
             <div class="zform_wrapper">
                 <h2><: Backup your hosting account files :></h2>
                 <% if HasData %>
-                <form name="LaunchBackup" action="modules/backupmgr/code/launchbackup.php?id=<@ UserID @>&amp;mode=local" target="backup" method="post" onsubmit="var w=window.open('', 'backup', 'scrollbars=no,menubar=no,height=300,width=600,resizable=no,toolbar=no,location=no,status=no'); w.focus();">
+                <form name="LaunchBackup" action="modules/backupmgr/code/launchbackup.php?id=<@ UserID @>&amp;mode=local" target="backup" method="post" data-open-window="backup" data-window-features="scrollbars=no,menubar=no,height=300,width=600,resizable=no,toolbar=no,location=no,status=no">
                     <@ CSFR_Tag @>
                     <table class="table table-striped">
                         <tr>
@@ -118,17 +118,4 @@
     </div><!-- /tab-content -->
 </div>
 
-<script>
-(function () {
-    "use strict";
-    // Activar la pestaña indicada por ?tab=xxx (para volver a la pestaña correcta
-    // tras guardar/probar/borrar o al paginar el registro).
-    var m = window.location.search.match(/[?&]tab=([a-z]+)/);
-    var tab = m ? m[1] : null;
-    var map = { backups: '#bk-backups', auto: '#bk-auto', conn: '#bk-conn', log: '#bk-log' };
-    if (tab && map[tab]) {
-        var el = document.querySelector('#bkTabs a[href="' + map[tab] + '"]');
-        if (el) el.click();
-    }
-})();
-</script>
+<script src="modules/backupmgr/assets/backupmgr.js"></script>

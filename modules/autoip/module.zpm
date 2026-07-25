@@ -51,7 +51,7 @@
                 <td><& ai_isactive &></td>
                 <td>
                     <button type="button" class="btn btn-sm btn-secondary"
-                        onclick="var f=document.getElementById('inManualIP');if(f){f.value='<& ai_ip &>';f.style.background='#ffffcc';f.focus();}">
+                        data-fill-ip="<& ai_ip &>">
                         <i class="bi bi-check-square me-1"></i><: Select :>
                     </button>
                 </td>
@@ -129,3 +129,4 @@
     </div>
 
 </div>
+<script src="modules/autoip/assets/autoip.js"></script>

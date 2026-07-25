@@ -52,21 +52,4 @@
 
 </div>
 
-<script>
-    if(!window.jQuery)
-    {
-        var script = document.createElement('script');
-        script.type = "text/javascript";
-        script.src = "modules/webalizer_stats/assets/jquery.js";
-        document.getElementsByTagName('head')[0].appendChild(script);
-    }
-</script>
-<script type="text/javascript">
-    if (typeof jQuery == 'undefined') {
-        var script = document.createElement('script');
-        script.type = "text/javascript";
-        script.src = "modules/webalizer_stats/assets/jquery.js";
-        document.getElementsByTagName('head')[0].appendChild(script);
-    }
-</script>
 <script type="text/javascript" src="modules/webalizer_stats/assets/jquery.autoheight.js"></script>

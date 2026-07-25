@@ -50,16 +50,7 @@ class module_controller extends ctrl_module
     static function getPostInit() {
         global $controller;
 		// SCEditor 'footer' JS
-		$line = "
-			<script>
-				var textarea = document.getElementById('inNotice');
-				sceditor.create(textarea, {
-					format: 'bbcode',
-					icons: 'monocons',
-					toolbar: 'bold,italic,font,size,underline,color,removeformat|cut,copy,paste|bulletlist,orderedlist|email,link,unlink|date,time|source',
-					style: 'modules/".$controller->GetControllerRequest('URL', 'module')."/code/SCEditor/minified/themes/content/default.min.css'
-				});
-			</script>";
+		$line = '<script src="modules/'.$controller->GetControllerRequest('URL', 'module').'/assets/client_notices.js"></script>';
         return $line;
     }
 

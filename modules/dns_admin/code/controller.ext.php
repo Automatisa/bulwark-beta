@@ -134,8 +134,8 @@ class module_controller extends ctrl_module
             $confirm = "Reactivar el nodo " . $rawName . " en el cluster DNS?";
             $btn     = "<button type=\"submit\" class=\"btn btn-sm btn-outline-success\"><i class=\"bi bi-arrow-clockwise\"></i> " . ui_language::translate("Reactivar") . "</button>";
         }
-        $onsub = htmlspecialchars("return confirm('" . $confirm . "');", ENT_QUOTES, 'UTF-8');
-        $f  = "<form action=\"./?module=dns_admin&action=ClusterNodes\" method=\"post\" style=\"margin:0\" onsubmit=\"" . $onsub . "\">";
+        $onsub = htmlspecialchars($confirm, ENT_QUOTES, 'UTF-8');
+        $f  = "<form action=\"./?module=dns_admin&action=ClusterNodes\" method=\"post\" style=\"margin:0\" data-confirm=\"" . $onsub . "\">";
         $f .= runtime_csfr::Token();
         $f .= "<input type=\"hidden\" name=\"" . $field . "\" value=\"" . (int)$id . "\">";
         $f .= $btn;
@@ -436,7 +436,7 @@ class module_controller extends ctrl_module
         $line .= "</tr>";
         $line .= "</table>";
         $line .= "</form>";
-        $line .= "<form name=\"launchbindlog\" action=\"modules/dns_admin/code/getbindlog.php\" target=\"bindlogwindow\" method=\"post\" onsubmit=\"window.open('', 'bindlogwindow', 'scrollbars=yes,menubar=no,height=525,width=825,resizable=no,toolbar=no,location=no,status=no')\">";
+        $line .= "<form name=\"launchbindlog\" action=\"modules/dns_admin/code/getbindlog.php\" target=\"bindlogwindow\" method=\"post\" data-open-window=\"bindlogwindow\" data-window-features=\"scrollbars=yes,menubar=no,height=525,width=825,resizable=no,toolbar=no,location=no,status=no\">";
         $line .= runtime_csfr::Token();
         $line .= "<table class=\"table table-striped\">";
         $line .= "<tr>";

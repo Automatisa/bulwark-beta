@@ -21,7 +21,7 @@
 					</th>
                     <td>
 						<: Add line break using: :> [br] or &#60;br&#62;<br>
-						<textarea name="inNotice" id="inNotice" rows="7" cols="80" /><@ CurrentNoticeText @></textarea>
+						<textarea name="inNotice" id="inNotice" rows="7" cols="80" data-sceditor-style="modules/client_notices/code/SCEditor/minified/themes/content/default.min.css" /><@ CurrentNoticeText @></textarea>
 					</td>
                 </tr>
 				<tr>

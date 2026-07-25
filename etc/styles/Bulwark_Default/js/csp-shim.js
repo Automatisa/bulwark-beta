@@ -102,11 +102,18 @@
         if (el && el.form) el.form.submit();
     });
 
-    // --- submit: data-confirm en <form> ---
+    // --- submit: data-confirm y data-open-window en <form> ---
     document.addEventListener("submit", function (ev) {
         var form = ev.target;
-        if (form && form.hasAttribute && form.hasAttribute("data-confirm")) {
-            if (!window.confirm(form.getAttribute("data-confirm"))) { ev.preventDefault(); }
+        if (!form || !form.hasAttribute) return;
+        if (form.hasAttribute("data-confirm")) {
+            if (!window.confirm(form.getAttribute("data-confirm"))) { ev.preventDefault(); return; }
+        }
+        // Pre-abre la ventana con nombre/opciones a la que apunta target= (sustituye
+        // onsubmit="var w=window.open('', 'name', 'features'); w.focus();").
+        if (form.hasAttribute("data-open-window")) {
+            var w = window.open("", form.getAttribute("data-open-window"), form.getAttribute("data-window-features") || "");
+            if (w) w.focus();
         }
     });
 
