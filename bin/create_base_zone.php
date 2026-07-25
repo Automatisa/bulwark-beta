@@ -111,6 +111,11 @@ if ((int)$cnt->fetchColumn() === 0) {
         ['TXT', '@',     3600,   'v=spf1 a mx ip4:' . $ip . ($has6 ? ' ip6:' . $ip6 : '') . ' ~all', null],
         ['TXT', '_dmarc',3600,   'v=DMARC1; p=quarantine; rua=mailto:postmaster@' . $provider . '; fo=1', null],
         ['TXT', 'default._domainkey', 3600, 'PENDING', null],
+        // CAA: solo Let's Encrypt puede emitir certs para el dominio (el panel usa LE). Recomendado
+        // por internet.nl; con DNSSEC activo protege contra emisión no autorizada.
+        ['CAA', '@',     3600,   '0 issue "letsencrypt.org"', null],
+        ['CAA', '@',     3600,   '0 issuewild "letsencrypt.org"', null],
+        ['CAA', '@',     3600,   '0 iodef "mailto:postmaster@' . $provider . '"', null],
     ];
     // Registros AAAA (doble pila): sólo si server_ip6 está definido. Sin esto, ns1/ns2/mail
     // quedan sólo en IPv4 y el test de internet.nl (IPv6) falla para el dominio proveedor.

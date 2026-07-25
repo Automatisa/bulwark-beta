@@ -185,6 +185,11 @@ function bulwark_client_directives(?string $customRaw): string
     $h  = '# Cabeceras de seguridad (Bulwark, recomendadas)' . fs_filehandler::NewLine();
     $h .= 'Header always set X-Content-Type-Options "nosniff"' . fs_filehandler::NewLine();
     $h .= 'Header always set Referrer-Policy "strict-origin-when-cross-origin"' . fs_filehandler::NewLine();
+    // HSTS: fuerza HTTPS en visitas futuras (1 año). SOLO se emite sobre HTTPS (expr %{HTTPS}), así
+    // el mismo helper vale para el vhost :80 sin mandar HSTS por HTTP (RFC 6797). Sin
+    // includeSubDomains ni preload (evita bloquear subdominios sin HTTPS / cambios irreversibles).
+    // El panel autorenueva los certs LE, así que la web sigue disponible por HTTPS.
+    $h .= 'Header always set Strict-Transport-Security "max-age=31536000" "expr=%{HTTPS} == \'on\'"' . fs_filehandler::NewLine();
     $custom = sanitizeVhCustom($customRaw);
     return ($custom !== '') ? $h . $custom : $h;
 }

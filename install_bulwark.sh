@@ -1535,7 +1535,10 @@ sed -i '' "s|^KeepAlive Off|KeepAlive On|" "$HTTP_CONF"
 # cifrados solo AEAD con forward-secrecy (evita la blocklist de HTTP/2 y CBC/no-PFS).
 SSL_CONF="/usr/local/etc/apache24/extra/httpd-ssl.conf"
 if [ -f "$SSL_CONF" ]; then
-    TLS_CIPHERS="ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384"
+    # Solo ECDHE + AEAD (forward secrecy). SIN DHE: NCSC-NL/internet.nl marcan DHE-RSA-GCM como
+    # "phase out" y sus parámetros DH (incluso 4096, no RFC 7919) como "insufficient". ECDHE cubre
+    # todos los clientes modernos; el resto cae a texto/no conecta (no aplica en web pública).
+    TLS_CIPHERS="ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
     sed -i '' -E "s|^[[:space:]]*SSLProtocol .*|SSLProtocol -all +TLSv1.2 +TLSv1.3|" "$SSL_CONF"
     sed -i '' -E "s|^[[:space:]]*SSLCipherSuite .*|SSLCipherSuite ${TLS_CIPHERS}|" "$SSL_CONF"
     grep -qE "^[[:space:]]*SSLHonorCipherOrder" "$SSL_CONF" || echo "SSLHonorCipherOrder on" >> "$SSL_CONF"
