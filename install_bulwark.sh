@@ -1542,6 +1542,14 @@ if [ -f "$SSL_CONF" ]; then
     sed -i '' -E "s|^[[:space:]]*SSLProtocol .*|SSLProtocol -all +TLSv1.2 +TLSv1.3|" "$SSL_CONF"
     sed -i '' -E "s|^[[:space:]]*SSLCipherSuite .*|SSLCipherSuite ${TLS_CIPHERS}|" "$SSL_CONF"
     grep -qE "^[[:space:]]*SSLHonorCipherOrder" "$SSL_CONF" || echo "SSLHonorCipherOrder on" >> "$SSL_CONF"
+    # Algoritmos de firma para el intercambio (TLS 1.2): solo SHA-256/384/512. internet.nl/NCSC-NL
+    # marcan SHA-1 (insufficient) y SHA-224 (phase out); OpenSSL los ofrece por defecto. Global.
+    SIGALGS="ECDSA+SHA256:ECDSA+SHA384:ECDSA+SHA512:RSA-PSS+SHA256:RSA-PSS+SHA384:RSA-PSS+SHA512:RSA+SHA256:RSA+SHA384:RSA+SHA512:ed25519:ed448"
+    if grep -qE "^[[:space:]]*SSLOpenSSLConfCmd SignatureAlgorithms" "$SSL_CONF"; then
+        sed -i '' -E "s|^[[:space:]]*SSLOpenSSLConfCmd SignatureAlgorithms .*|SSLOpenSSLConfCmd SignatureAlgorithms ${SIGALGS}|" "$SSL_CONF"
+    else
+        echo "SSLOpenSSLConfCmd SignatureAlgorithms ${SIGALGS}" >> "$SSL_CONF"
+    fi
 fi
 
 # Include de Bulwark (si no existe ya)
