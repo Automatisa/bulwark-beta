@@ -429,21 +429,9 @@ class module_controller extends ctrl_module
         $html .= '</div></div>';
 
         $html .= '<script src="etc/lib/charts/chart.min.js"></script>';
-        $html .= '<script>(function(){';
-        $html .= 'var zpxM=' . $monthJson . ';';
-        $html .= 'var zpxD=' . $dataJson . ';';
-        $html .= 'var zpxO={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{maxTicksLimit:5}}}};';
-        $html .= 'var zpxBw=new Chart(document.getElementById("zpx_bw_chart"),{type:"bar",data:{labels:zpxM,datasets:[{label:"MB",data:[],backgroundColor:"#1a4e84",borderRadius:3}]},options:zpxO});';
-        $html .= 'var zpxDk=new Chart(document.getElementById("zpx_disk_chart"),{type:"bar",data:{labels:zpxM,datasets:[{label:"MB",data:[],backgroundColor:"#27ae60",borderRadius:3}]},options:zpxO});';
-        $html .= 'function zpxUpd(y){';
-        $html .= 'var d=zpxD[y]||Array(12).fill({bw:0,disk:0});';
-        $html .= 'zpxBw.data.datasets[0].data=d.map(function(m){return m.bw;});';
-        $html .= 'zpxDk.data.datasets[0].data=d.map(function(m){return m.disk;});';
-        $html .= 'zpxBw.update();zpxDk.update();';
-        $html .= '}';
-        $html .= 'document.getElementById("zpx_year_sel").addEventListener("change",function(){zpxUpd(this.value);});';
-        $html .= 'zpxUpd("' . $defaultYear . '");';
-        $html .= '})();</script>';
+        $zpxIsland = json_encode(['months' => ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], 'data' => $yearData, 'defaultYear' => $defaultYear], JSON_UNESCAPED_UNICODE);
+        $html .= '<script type="application/json" id="zpx-data">' . $zpxIsland . '</script>';
+        $html .= '<script src="modules/usage_viewer/assets/usage_viewer.js"></script>';
 
         return $html;
     }
@@ -516,17 +504,17 @@ class module_controller extends ctrl_module
         $html .= '<h2 style="margin:0;">Resource Consumers — ' . date('F Y') . '</h2>';
         $html .= '<input id="zpx_search" type="text" placeholder="Filter user..." '
                . 'style="font-size:12px;padding:3px 7px;border:1px solid #ccc;border-radius:3px;" '
-               . 'oninput="zpxFilter()">';
+               . '>';
         $html .= '</div>';
 
         $html .= '<table id="zpx_tc" class="table table-striped table-sm" style="font-size:12px;">';
         $html .= '<thead><tr>'
-               . '<th style="cursor:pointer" onclick="zpxSort(0)">#</th>'
-               . '<th style="cursor:pointer" onclick="zpxSort(1)">User &#9660;</th>'
-               . '<th style="cursor:pointer" onclick="zpxSort(2)">Group</th>'
-               . '<th style="cursor:pointer" onclick="zpxSort(3)">Disk used</th>'
+               . '<th style="cursor:pointer" data-sort="0">#</th>'
+               . '<th style="cursor:pointer" data-sort="1">User &#9660;</th>'
+               . '<th style="cursor:pointer" data-sort="2">Group</th>'
+               . '<th style="cursor:pointer" data-sort="3">Disk used</th>'
                . '<th>Disk quota</th>'
-               . '<th style="cursor:pointer" onclick="zpxSort(5)">BW used</th>'
+               . '<th style="cursor:pointer" data-sort="5">BW used</th>'
                . '<th>BW quota</th>'
                . '</tr></thead><tbody>';
 
@@ -553,27 +541,7 @@ class module_controller extends ctrl_module
 
         $html .= '</tbody></table></div>';
 
-        $html .= '<script>(function(){';
-        $html .= 'var zpxDir={};';
-        $html .= 'window.zpxSort=function(col){';
-        $html .= 'var tb=document.querySelector("#zpx_tc tbody");';
-        $html .= 'var rows=Array.from(tb.querySelectorAll("tr"));';
-        $html .= 'zpxDir[col]=!zpxDir[col];';
-        $html .= 'rows.sort(function(a,b){';
-        $html .= 'var av=a.cells[col].dataset.val||a.cells[col].innerText.trim();';
-        $html .= 'var bv=b.cells[col].dataset.val||b.cells[col].innerText.trim();';
-        $html .= 'var n=parseFloat(av)-parseFloat(bv);';
-        $html .= 'var s=av.localeCompare(bv);';
-        $html .= 'return (isNaN(n)?s:n)*(zpxDir[col]?1:-1);';
-        $html .= '});';
-        $html .= 'rows.forEach(function(r,i){r.cells[0].innerText=i+1;tb.appendChild(r);});';
-        $html .= '};';
-        $html .= 'window.zpxFilter=function(){';
-        $html .= 'var q=document.getElementById("zpx_search").value.toLowerCase();';
-        $html .= 'document.querySelectorAll("#zpx_tc tbody tr").forEach(function(r){';
-        $html .= 'r.style.display=r.cells[1].innerText.toLowerCase().includes(q)?"":"none";';
-        $html .= '});};';
-        $html .= '})();</script>';
+        // (zpxSort/zpxFilter externalizados a modules/usage_viewer/assets/usage_viewer.js — CSP Fase 2)
 
         return $html;
     }
