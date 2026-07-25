@@ -23,8 +23,8 @@
 	<@ Result @>
 
 <div class="tab">
-	<button class="tablinks <@ ShowViewCerts @>" onclick="openTABS(event, 'ViewCerts')"><i class="bi bi-eye me-1"></i><b><u>View Your Certificates</u></b></button>
-	<button class="tablinks <@ ShowCreateCerts @>" onclick="openTABS(event, 'CreateCerts')"><i class="bi bi-shield-lock me-1"></i><b><u>Create or Manage Certificates</u></b></button>
+	<button class="tablinks <@ ShowViewCerts @>" data-tab="ViewCerts"><i class="bi bi-eye me-1"></i><b><u>View Your Certificates</u></b></button>
+	<button class="tablinks <@ ShowCreateCerts @>" data-tab="CreateCerts"><i class="bi bi-shield-lock me-1"></i><b><u>Create or Manage Certificates</u></b></button>
 </div>
 
 <div style="display: <@ ShowViewCerts @>;" id="ViewCerts" class="tabcontent">
@@ -112,9 +112,9 @@
 	<p>(<: Select a tab that best suits your needs below to get started :>)</p>
 
 	<div class="tab">
-		<button class="tablinks <@ ShowLetsencryptActive @>" onclick="openTABS(event, 'Letsencrypt')"><i class="bi bi-lock me-1"></i><img src="modules/sencrypt/assets/icon.png">Let's Encrypt<br>Free with Auto-renew</button>
-		<button class="tablinks <@ ShowThird_partyActive @>" onclick="openTABS(event, 'Third-party')"><i class="bi bi-file-earmark-lock me-1"></i><img src="modules/sencrypt/assets/third_party.png">Third-Party<br>Self-signed or purchased certificates</button>
-		<!--<button style="display:block;float:right;" class="tablinks" onclick="openTABS(event, 'Settings')"><i class="bi bi-gear me-1"></i><img src="modules/sencrypt/assets/settings.png">Settings</button>-->
+		<button class="tablinks <@ ShowLetsencryptActive @>" data-tab="Letsencrypt"><i class="bi bi-lock me-1"></i><img src="modules/sencrypt/assets/icon.png">Let's Encrypt<br>Free with Auto-renew</button>
+		<button class="tablinks <@ ShowThird_partyActive @>" data-tab="Third-party"><i class="bi bi-file-earmark-lock me-1"></i><img src="modules/sencrypt/assets/third_party.png">Third-Party<br>Self-signed or purchased certificates</button>
+		<!--<button style="display:block;float:right;" class="tablinks" data-tab="Settings"><i class="bi bi-gear me-1"></i><img src="modules/sencrypt/assets/settings.png">Settings</button>-->
 	</div>
 </div>
 	<div style="display: <@ ShowLetsencryptTab @>;" id="Letsencrypt" class="tabcontent">
@@ -370,22 +370,3 @@
 <br />
 </div>
 
-<script>
-function openTABS(evt, tabName)
-{
-	var i, tabcontent, tablinks;
-	tabcontent = document.getElementsByClassName("tabcontent");
-	for (i = 0; i < tabcontent.length; i++)
-	{
-	tabcontent[i].style.display = "none";
-	}
-	tablinks = document.getElementsByClassName("tablinks");
-	for (i = 0; i < tablinks.length; i++)
-	{
-	tablinks[i].className = tablinks[i].className.replace(" active", "");
-	}
-	document.getElementById(tabName).style.display = "block";
-	evt.currentTarget.className += " active";
-}
-document.getElementById("ViewCerts").click();
-</script>

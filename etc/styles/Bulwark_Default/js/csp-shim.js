@@ -36,12 +36,26 @@
 
     function byId(id) { return id ? document.getElementById(id) : null; }
 
-    // --- click: data-show / data-hide / data-toggle-vis / data-href / data-confirm / data-call ---
+    // Conmutador de pestañas genérico (sustituye openTABS): oculta todo .tabcontent,
+    // desactiva todo .tablinks, muestra #<data-tab> y marca activo el link pulsado.
+    function activateTab(link) {
+        var name = link.getAttribute("data-tab"), i;
+        var tc = document.getElementsByClassName("tabcontent");
+        for (i = 0; i < tc.length; i++) tc[i].style.display = "none";
+        var tl = document.getElementsByClassName("tablinks");
+        for (i = 0; i < tl.length; i++) tl[i].className = tl[i].className.replace(" active", "");
+        var target = byId(name); if (target) target.style.display = "block";
+        if (link.className.indexOf("active") < 0) link.className += " active";
+    }
+
+    // --- click: pestañas / visibilidad / password / href / confirm / call ---
     document.addEventListener("click", function (ev) {
         var el = ev.target.closest(
             "[data-href],[data-confirm],[data-call],[data-show],[data-hide],[data-toggle-vis]," +
-            "[data-password-toggle],[data-password-show],[data-check]");
+            "[data-password-toggle],[data-password-show],[data-check],[data-tab]");
         if (!el) return;
+
+        if (el.hasAttribute("data-tab")) { ev.preventDefault(); activateTab(el); }
 
         // Mostrar/ocultar/alternar visibilidad (sustituye show_div/hide_div/toggle_visibility).
         // NO hacemos preventDefault salvo en <a>, porque muchos disparadores son radios/checkboxes
@@ -105,4 +119,13 @@
         }
         if (!ok) { ev.preventDefault(); }
     });
+
+    // Init de pestañas al cargar: activa la marcada como .active por el servidor (o la 1ª).
+    function initTabs() {
+        var links = document.querySelectorAll(".tablinks[data-tab]");
+        if (!links.length) return;
+        activateTab(document.querySelector(".tablinks.active[data-tab]") || links[0]);
+    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initTabs);
+    else initTabs();
 })();
