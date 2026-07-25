@@ -259,6 +259,7 @@
 
         <script src="<# ui_tpl_assetfolderpath #>js/typeahead.min.js"></script>
         <script src="<# ui_tpl_assetfolderpath #>js/csp-shim.js"></script>
+        <script src="<# ui_tpl_assetfolderpath #>js/password-tools.js"></script>
 
         <!-- Modulelist para Typeahead: isla de datos JSON (no ejecutable, CSP-safe).
              La inicializa bulwark.js al cargar (Sentora.modules.typeAhead). -->
