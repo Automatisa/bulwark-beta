@@ -306,7 +306,7 @@ class module_controller extends ctrl_module
         }
         $h .= '<div id="mlExemptWrap">';
         $h .= '<input type="text" id="mlExemptSearch" class="form-control form-control-sm" placeholder="Filtrar cuentas exentas..." '
-            . 'autocomplete="off" style="max-width:260px;margin-bottom:8px;display:none;" onkeyup="mlExemptRender()">';
+            . 'autocomplete="off" style="max-width:260px;margin-bottom:8px;display:none;">';
         $h .= '<div id="mlExemptCount" class="form-text" style="margin:0 0 6px;"></div>';
         $h .= '<div style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">';
         $h .= '<table class="table table-hover table-sm align-middle" style="margin:0;"><tbody id="mlExemptBody">';
