@@ -674,9 +674,10 @@ class module_controller extends ctrl_module {
 		return (isset($_GET['ShowPanel']) && $_GET['ShowPanel'] === 'sans' && self::sansDomainForUser() !== null) ? 'block' : 'none';
 	}
 
-	# Oculta el resto del módulo (tabs) mientras se ve la hoja de SANs -> "hoja" limpia.
-	static function getMainDisplay() {
-		return (isset($_GET['ShowPanel']) && $_GET['ShowPanel'] === 'sans' && self::sansDomainForUser() !== null) ? 'none' : 'block';
+	# Muestra el resto del módulo (tabs) EXCEPTO cuando se ve la hoja de SANs -> "hoja" limpia.
+	# Con <% if %> se OMITE del DOM (no toggling de display, que rompía el JS de pestañas).
+	static function getShowMainTabs() {
+		return !(isset($_GET['ShowPanel']) && $_GET['ShowPanel'] === 'sans' && self::sansDomainForUser() !== null);
 	}
 
 	static function getSansDomain() {
@@ -1700,12 +1701,23 @@ class module_controller extends ctrl_module {
 		global $controller;
 
 		$sub_module = "letsencrypt";
-		
+
 		$currentuser = ctrl_users::GetUserDetail();
 		$formvars = $controller->GetAllControllerRequests('FORM');
+		$dom = (string)($formvars['inDomain'] ?? '');
 
-		if (self::ExecuteMakeSSL($formvars['inDomain'], $currentuser["username"], $sub_module))
-		return true;
+		# Feedback FIABLE (PRG): la emisión DNS-01 puede tardar; damos un mensaje claro pase lo que
+		# pase (antes fallaba en silencio -> "no hizo nada"). El flash lo muestra <@ ReissueMessage @>.
+		$ok = self::ExecuteMakeSSL($dom, $currentuser["username"], $sub_module);
+		if ($ok) {
+			$_SESSION['sencrypt_flash'] = array('ok', ui_language::translate('SSL certificate issued for') . ' ' . htmlspecialchars($dom, ENT_QUOTES, 'UTF-8') . '.');
+		} elseif (self::$dnsInvalid) {
+			$_SESSION['sencrypt_flash'] = array('err', htmlspecialchars($dom, ENT_QUOTES, 'UTF-8') . ': ' . ui_language::translate('the domain does not resolve to this server yet. Check DNS and try again.'));
+		} else {
+			$_SESSION['sencrypt_flash'] = array('err', htmlspecialchars($dom, ENT_QUOTES, 'UTF-8') . ': ' . ui_language::translate('the certificate could not be issued. Please try again; if it persists, contact your administrator.'));
+		}
+		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
+		return $ok;
 	}
 	
 # Panel		
@@ -1745,7 +1757,8 @@ class module_controller extends ctrl_module {
 
 		require("modules/sencrypt/code/Lescript.php");
 		date_default_timezone_set("UTC");
-		
+		set_time_limit(0); // la emisión DNS-01 (rebuild + espera de propagación) puede pasar de 30s
+
 		$user_ip = ctrl_options::GetSystemOption('server_ip');
 
 		# Check DNS before continuing
@@ -1787,18 +1800,25 @@ class module_controller extends ctrl_module {
 				$query->bindParam(':domain', $domain);
 				$query->execute();
 		
+			# Emisión por DNS-01 (reto _acme-challenge en la zona, que el panel controla). Motivo: el
+			# panel corre como 'bulwark' y NO puede escribir el reto HTTP-01 en el docroot del dominio
+			# (h_user:www 2750) -> el HTTP-01 síncrono fallaba en silencio (sobre todo en subdominios).
+			# DNS-01 no depende del docroot ni de que el sitio sea alcanzable por HTTP. Mismos callbacks
+			# que la emisión wildcard. set_time_limit(0) arriba evita el corte por max_execution_time.
+			$dns01Prov  = array('module_controller', 'Dns01Provision');
+			$dns01Clean = array('module_controller', 'Dns01Cleanup');
 			while ($row = $query->fetch()) {
 
 				if (($row['vh_type_in'] == 2 ) || ($count != 1 )) {
-					# Create domain without www. because its a subdomain
-					$le->signDomains(array($domain));
+					# Subdominio (o directorio compartido): solo el propio nombre.
+					$le->signDomains(array($domain), false, '', 'dns-01', $dns01Prov, $dns01Clean);
 
 				} else {
 
-					# Create a SSL for domain and with www. because its a root domain
-					$le->signDomains(array($domain, 'www.'. $domain));
+					# Dominio raíz: el dominio y www.
+					$le->signDomains(array($domain, 'www.'. $domain), false, '', 'dns-01', $dns01Prov, $dns01Clean);
 				}
-			}			
+			}
 		}
 	
 		catch (\Exception $e) {

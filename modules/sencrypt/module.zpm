@@ -22,6 +22,9 @@
 	
 	<@ Result @>
 
+	<!-- Mensaje flash (PRG) a NIVEL SUPERIOR: siempre visible, no lo oculta el JS de pestañas. -->
+	<@ ReissueMessage @>
+
 <!-- HOJA de nombres extra del certificado (tabla). Se abre desde el botón "Extra names" de cada dominio.
      Sin class="tabcontent": el JS de pestañas oculta esos divs al cargar; aquí controlamos el display. -->
 <div style="display:<@ ShowSansPanel @>;" id="SansSheet">
@@ -49,7 +52,7 @@
 	</div>
 </div>
 
-<div style="display:<@ MainDisplay @>;">
+<% if ShowMainTabs %>
 <div class="tab">
 	<button class="tablinks <@ ShowViewCerts @>" data-tab="ViewCerts"><i class="bi bi-eye me-1"></i><b><u>View Your Certificates</u></b></button>
 	<button class="tablinks <@ ShowCreateCerts @>" data-tab="CreateCerts"><i class="bi bi-shield-lock me-1"></i><b><u>Create or Manage Certificates</u></b></button>
@@ -107,7 +110,6 @@
 		</div>
 	<% endif %>
 
-	<@ ReissueMessage @>
 	<div class="zgrid_wrapper" >
 		<table class="table">
 			<h3><: Your Domain Certificates :></h3>
@@ -412,7 +414,7 @@
 	<p>&nbsp;</p>
 	<h3>Coming Soon!</h3>
 </div>
-</div>
+<% endif %>
 <br />
 </div>
 
