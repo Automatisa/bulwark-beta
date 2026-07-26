@@ -645,35 +645,72 @@ class module_controller extends ctrl_module {
 		return $out;
 	}
 
-	# Selector (checkboxes) de los SAN extra del cert del dominio del usuario. Solo ofrece subdominios
-	# reales del DNS sin cert propio (ver getEligibleSubdomains). Plegable (<details>), sin texto libre.
+	# Botón por fila: abre la HOJA de gestión de nombres extra (tabla) para ese dominio.
 	static function VhostSansEditor($rowdomains) {
 		if ((int)($rowdomains['vh_type_in'] ?? 0) === 2) { return ''; }          // subdominio: cert propio
 		if ((int)($rowdomains['vh_le_wildcard_in'] ?? 0) === 1) {                 // wildcard: ya los cubre
 			return '<small>' . ui_language::translate('Covered by wildcard') . ' *.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '</small>';
 		}
-		$cu     = ctrl_users::GetUserDetail();
-		$domain = strtolower($rowdomains['vh_name_vc']);
-		$elig   = self::getEligibleSubdomains($domain, $cu['userid']);
-		$sel    = array_filter(array_map('trim', explode(',', strtolower((string)($rowdomains['vh_le_extra_sans'] ?? '')))));
-		$summary = htmlspecialchars(ui_language::translate('Extra names'), ENT_QUOTES, 'UTF-8') . ' (' . count($sel) . ')';
+		$sel = array_filter(array_map('trim', explode(',', strtolower((string)($rowdomains['vh_le_extra_sans'] ?? '')))));
+		return '<a class="button-loader btn btn-secondary" href="./?module=sencrypt&ShowPanel=sans&inDomain=' . urlencode($rowdomains['vh_name_vc']) . '">'
+			. '<i class="bi bi-tags me-1"></i>' . ui_language::translate('Extra names') . ' (' . count($sel) . ')</a>';
+	}
+
+	# Dominio (raíz, del propio usuario) de la hoja de SANs, tomado de ?inDomain. NULL si no válido.
+	private static function sansDomainForUser() {
+		global $zdbh;
+		if (!isset($_GET['inDomain'])) { return null; }
+		$d = strtolower(trim((string)$_GET['inDomain']));
+		if ($d === '') { return null; }
+		$cu = ctrl_users::GetUserDetail();
+		$q = $zdbh->prepare("SELECT vh_name_vc FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in=1");
+		$q->execute(array(':d' => $d, ':u' => (int)$cu['userid']));
+		$r = $q->fetchColumn();
+		return $r ? $r : null;
+	}
+
+	# Muestra la hoja de SANs (display:block) solo cuando ShowPanel=sans y el dominio es válido.
+	static function getShowSansPanel() {
+		return (isset($_GET['ShowPanel']) && $_GET['ShowPanel'] === 'sans' && self::sansDomainForUser() !== null) ? 'block' : 'none';
+	}
+
+	# Oculta el resto del módulo (tabs) mientras se ve la hoja de SANs -> "hoja" limpia.
+	static function getMainDisplay() {
+		return (isset($_GET['ShowPanel']) && $_GET['ShowPanel'] === 'sans' && self::sansDomainForUser() !== null) ? 'none' : 'block';
+	}
+
+	static function getSansDomain() {
+		$d = self::sansDomainForUser();
+		return $d ? htmlspecialchars($d, ENT_QUOTES, 'UTF-8') : '';
+	}
+
+	static function getSansIntro() {
+		$d = self::sansDomainForUser();
+		if (!$d) { return ''; }
+		return ui_language::translate('Only subdomains that exist in DNS and do not already have their own certificate are listed.')
+			. ' ' . ui_language::translate('If you remove one from DNS it is dropped from the certificate automatically on the next renewal.');
+	}
+
+	# Filas de la tabla de la hoja: subdominios elegibles + estado (marcado si ya está en el cert).
+	static function getSans_List() {
+		$d = self::sansDomainForUser();
+		if (!$d) { return array(array('San_Fqdn' => ui_language::translate('Domain not valid.'), 'San_Checkbox' => NULL)); }
+		global $zdbh;
+		$cu = ctrl_users::GetUserDetail();
+		$elig = self::getEligibleSubdomains($d, $cu['userid']);
+		$q = $zdbh->prepare("SELECT vh_le_extra_sans FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in=1");
+		$q->execute(array(':d' => $d, ':u' => (int)$cu['userid']));
+		$sel = array_filter(array_map('trim', explode(',', strtolower((string)$q->fetchColumn()))));
 		if (empty($elig)) {
-			return '<details class="sencrypt-sans"><summary>' . $summary . '</summary>'
-				. '<small>' . ui_language::translate('No eligible subdomains in DNS. A subdomain that has its own site gets its own certificate; add a plain DNS record to offer it here.') . '</small></details>';
+			return array(array('San_Fqdn' => ui_language::translate('No eligible subdomains in DNS. Create a plain DNS record (a subdomain with its own site gets its own certificate).'), 'San_Checkbox' => NULL));
 		}
-		$opts = '';
+		$res = array();
 		foreach ($elig as $fqdn) {
-			$chk = in_array($fqdn, $sel, true) ? ' checked' : '';
 			$h = htmlspecialchars($fqdn, ENT_QUOTES, 'UTF-8');
-			$opts .= '<label class="sencrypt-sans-opt"><input type="checkbox" name="inSans[]" value="' . $h . '"' . $chk . '> ' . $h . '</label>';
+			$chk = in_array($fqdn, $sel, true) ? ' checked' : '';
+			$res[] = array('San_Fqdn' => $fqdn, 'San_Checkbox' => '<input type="checkbox" name="inSans[]" value="' . $h . '"' . $chk . '>');
 		}
-		return '<details class="sencrypt-sans"><summary>' . $summary . '</summary>'
-			. '<form action="./?module=sencrypt&action=SaveVhostSans" method="post">'
-			. runtime_csfr::Token()
-			. '<input type="hidden" name="inDomain" value="' . htmlspecialchars($domain, ENT_QUOTES, 'UTF-8') . '">'
-			. $opts
-			. '<button class="button-loader btn btn-secondary" type="submit"><i class="bi bi-floppy me-1"></i>' . ui_language::translate('Save') . '</button>'
-			. '</form></details>';
+		return $res;
 	}
 
 	# Guarda la selección de SAN extra del PROPIO dominio. Anti-IDOR (vh_acc_fk) + anti-tamper (solo

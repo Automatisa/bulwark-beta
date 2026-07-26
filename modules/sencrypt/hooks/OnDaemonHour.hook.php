@@ -347,16 +347,21 @@ function renewCertificates() {
 					} else {
 						// Root domain: dominio + www + los SAN EXTRA que el usuario haya elegido para su
 						// cert (subdominios propios, editados en la UI de Sencrypt -> vh_le_extra_sans).
-						// Anti-abuso: solo se aceptan nombres que sean subdominio del propio dominio. Con
-						// extras se emite por DNS-01 (los subdominios no sirven el reto HTTP-01).
+						// Se intersectan con los subdominios ELEGIBLES ACTUALES (getEligibleSubdomains):
+						// así solo entran los que SIGUEN existiendo en el DNS y no tienen su propio cert.
+						// -> si el usuario borra el registro del DNS, el SAN se cae solo del cert en la
+						// siguiente emisión/renovación (no se sigue emitiendo ni renovando). Con extras se
+						// emite por DNS-01 (los subdominios no sirven el reto HTTP-01).
+						require_once 'modules/sencrypt/code/controller.ext.php';
 						$names = array($domain, 'www.'.$domain);
-						$suf = '.' . strtolower($domain);
-						foreach (array_filter(array_map('trim', explode(',', strtolower((string)($sslVhost['vh_le_extra_sans'] ?? ''))))) as $s) {
-							if ($s === '' || in_array($s, $names, true)) { continue; }
-							if (substr($s, -strlen($suf)) === $suf) { $names[] = $s; }
+						$stored = array_filter(array_map('trim', explode(',', strtolower((string)($sslVhost['vh_le_extra_sans'] ?? '')))));
+						if (!empty($stored)) {
+							$eligible = module_controller::getEligibleSubdomains($domain, (int)$sslVhost['vh_acc_fk']);
+							foreach ($stored as $s) {
+								if ($s !== '' && in_array($s, $eligible, true) && !in_array($s, $names, true)) { $names[] = $s; }
+							}
 						}
 						if (count($names) > 2) {
-							require_once 'modules/sencrypt/code/controller.ext.php';
 							echo "   SAN extra del usuario (DNS-01): ".implode(', ', array_slice($names, 2)).fs_filehandler::NewLine();
 							$le->signDomains($names, false, $replaces, 'dns-01',
 								array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
