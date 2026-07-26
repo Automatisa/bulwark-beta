@@ -488,42 +488,24 @@ function renewPanelCertificates() {
 					require_once 'modules/sencrypt/code/controller.ext.php';
 					global $zdbh;
 					$panelCertDomains = array($domain);
-					// SANs del cert del panel = nombres de SERVICIO del panel bajo el dominio proveedor
-					// (mail/ftp/smtp/imap/pop/autoconfig/autodiscover/webmail/mta-sts) que EXISTEN en el DNS
-					// apuntando a ESTE servidor (server_ip/server_ip6), MÁS los vhosts cableados al cert del
-					// panel (p.ej. mta-sts), MÁS panel_le_extra_sans (override manual). Este es el modelo de
-					// cPanel/Plesk/Hestia: una lista de subdominios de SERVICIO (convención, NO el nombre del
-					// cliente ni el del panel), no un volcado del DNS. Ventajas frente a "todos los A/AAAA":
-					//  - da igual cómo se llamen los nameservers (dns1, ns-x, ...): nunca están en la lista;
-					//  - nunca entra una web con su propio cert (apex, 'tienda', ...): se sirve por SNI.
-					// Exigir que el registro apunte aquí evita cubrir servicios que viven en otro nodo del
-					// cluster. Con extras -> DNS-01 (subdominios no sirven HTTP-01); clave reutilizada ->
-					// SPKI estable -> DANE intacto. Para un nombre de servicio no estándar: panel_le_extra_sans.
-					$prov = strtolower((string)ctrl_options::GetSystemOption('dns_provider_domain'));
+					// SANs del cert del panel SIN nombres cableados. El FQDN del panel es $domain
+					// (bulwark_domain, se llame como se llame: panel., servidor1., ...). Se le unen dos
+					// fuentes que NO adivinan nombres:
+					//  (a) por ROL: los vhosts cuyo SSL apunta al cert del panel (su vh_ssl_tx referencia
+					//      el dir del cert del panel), p.ej. el host de política mta-sts. Independiente del
+					//      nombre; si se cablea otro subdominio al cert del panel, entra solo.
+					//  (b) LISTA GUARDADA Y EDITABLE `panel_le_extra_sans`: la fuente de verdad de los
+					//      nombres de SERVICIO (correo, ftp, ...). Se SIEMBRA al instalar desde el objetivo
+					//      MX REAL del proveedor (create_base_zone) -> el nombre del correo sale del propio
+					//      DNS (mail., mx., o lo que sea), no de un nombre fijo. El admin la edita para
+					//      activar/quitar un nombre y las regeneraciones la respetan TAL CUAL (estable).
+					// Cada SAN se valida contra una zona gestionada (para resolver el reto DNS-01; los
+					// subdominios no sirven HTTP-01). Con extras -> DNS-01; clave reutilizada -> SPKI
+					// estable -> DANE intacto.
 					$cand = array();
-					$ips = array_values(array_filter(array(
-						(string)ctrl_options::GetSystemOption('server_ip'),
-						(string)ctrl_options::GetSystemOption('server_ip6'))));
-					if ($prov !== '' && !empty($ips)) {
-						$svc = array('mail','ftp','smtp','imap','pop','autoconfig','autodiscover','webmail','mta-sts');
-						$ph  = implode(',', array_fill(0, count($ips), '?'));
-						$q = $zdbh->prepare(
-							"SELECT DISTINCT LOWER(d.dn_host_vc) FROM x_dns d
-							   JOIN x_vhosts v ON v.vh_id_pk = d.dn_vhost_fk
-							  WHERE v.vh_name_vc = ? AND v.vh_type_in = 1 AND v.vh_deleted_ts IS NULL
-							    AND d.dn_deleted_ts IS NULL AND d.dn_type_vc IN ('A','AAAA')
-							    AND d.dn_target_vc IN ($ph)");
-						$q->execute(array_merge(array($prov), $ips));
-						foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $label) {
-							if (in_array($label, $svc, true)) { $cand[$label . '.' . $prov] = true; }
-						}
-						// Vhosts cableados al cert del panel (su vh_ssl_tx referencia el dir del cert del
-						// panel): p.ej. el host de política mta-sts. No presentan cert propio -> deben ir.
-						$wired = $zdbh->prepare("SELECT LOWER(vh_name_vc) FROM x_vhosts WHERE vh_deleted_ts IS NULL AND vh_ssl_tx LIKE ?");
-						$wired->execute(array('%/' . $domain . '/%'));
-						foreach ($wired->fetchAll(PDO::FETCH_COLUMN) as $vn) { if ($vn !== '') { $cand[$vn] = true; } }
-					}
-					// Añadidos manuales opcionales (union): nombre de servicio no estándar o sin registro aún.
+					$wired = $zdbh->prepare("SELECT LOWER(vh_name_vc) FROM x_vhosts WHERE vh_deleted_ts IS NULL AND vh_ssl_tx LIKE ?");
+					$wired->execute(array('%/' . $domain . '/%'));
+					foreach ($wired->fetchAll(PDO::FETCH_COLUMN) as $vn) { if ($vn !== '') { $cand[$vn] = true; } }
 					foreach (array_filter(array_map('trim', explode(',', strtolower((string)ctrl_options::GetSystemOption('panel_le_extra_sans'))))) as $s) {
 						if ($s !== '') { $cand[$s] = true; }
 					}

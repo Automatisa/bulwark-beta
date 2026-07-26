@@ -150,6 +150,28 @@ if ((int)$cnt->fetchColumn() === 0) {
     echo "la zona ya tiene registros; no se modifica.\n";
 }
 
+// ── 2b. sembrar (una vez) los SAN de servicio del cert del panel ────────────
+// El cert del panel debe cubrir el nombre del MX (para que el X509 del correo coincida). En vez
+// de cablear "mail", se lee el OBJETIVO MX REAL de la zona recién creada -> así vale se llame
+// mail., mx. o como sea. Se guarda en panel_le_extra_sans (lista editable, fuente de verdad); el
+// hook del cert la respeta tal cual y el admin puede añadir/quitar nombres después. Solo si vacío.
+$curSans = ctrl_options::GetSystemOption('panel_le_extra_sans');
+if (fs_director::CheckForEmptyValue($curSans)) {
+    $mxq = $zdbh->prepare("SELECT DISTINCT dn_target_vc FROM x_dns WHERE dn_vhost_fk=:v AND dn_type_vc='MX' AND dn_deleted_ts IS NULL");
+    $mxq->execute([':v' => $vid]);
+    $mxTargets = array();
+    foreach ($mxq->fetchAll(PDO::FETCH_COLUMN) as $t) {
+        $t = rtrim(strtolower(trim($t)), '.');
+        if ($t !== '') { $mxTargets[$t] = true; }
+    }
+    if (!empty($mxTargets)) {
+        $seed = implode(',', array_keys($mxTargets));
+        $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")
+             ->execute([':v' => $seed]);
+        echo "panel_le_extra_sans sembrado con el MX real: {$seed}\n";
+    }
+}
+
 // ── 3. avisar al daemon para que escriba zona + named.conf + vhost apache ────
 $zdbh->exec("UPDATE x_settings SET so_value_tx='true' WHERE so_name_vc='apache_changed'");
 $zdbh->exec("UPDATE x_settings SET so_value_tx='true' WHERE so_name_vc='dns_hasupdates'");

@@ -153,15 +153,10 @@ $upsert('TXT', '_mta-sts', 3600, 'v=STSv1; id=' . $policyId, null);
 $upsert('TXT', '_smtp._tls', 3600, 'v=TLSRPTv1; rua=mailto:postmaster@' . $domain, null);
 echo "registros DNS MTA-STS aplicados (id política {$policyId})\n";
 
-// ── 6. Asegurar el SAN del cert del panel (mta-sts.<dominio>) ─────────────────
-$cur = (string)ctrl_options::GetSystemOption('panel_le_extra_sans');
-$list = array_filter(array_map('trim', explode(',', strtolower($cur))));
-if (!in_array($stsHost, $list, true)) {
-    $list[] = $stsHost;
-    $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")
-         ->execute([':v' => implode(',', $list)]);
-    echo "panel_le_extra_sans += {$stsHost} (el cert del panel lo cubrirá en la próxima emisión)\n";
-}
+// ── 6. SAN del cert del panel ────────────────────────────────────────────────
+// No hace falta tocar panel_le_extra_sans: el subdominio mta-sts queda cableado al cert del panel
+// (su vh_ssl_tx referencia el dir del cert del panel), y el hook de emisión lo detecta por ROL y
+// lo añade como SAN automáticamente. Así mta-sts no ensucia la lista editable de nombres de servicio.
 
 // ── 7. Avisar al daemon (regenera zona + named.conf + vhost apache) ──────────
 $zdbh->exec("UPDATE x_settings SET so_value_tx='true' WHERE so_name_vc='apache_changed'");
