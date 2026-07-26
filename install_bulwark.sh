@@ -59,13 +59,16 @@ echo "#              Bulwark FreeBSD Installer                       #"
 echo "################################################################"
 echo ""
 
-# Detectar IP local
+# Detectar IP local (IPv4 y, si la hay, IPv6 pública: excluye link-local fe80, loopback ::1 y ULA fc/fd)
 LOCAL_IP=$(ifconfig | awk '/inet /{print $2}' | grep -v '^127' | head -1)
+LOCAL_IP6=$(ifconfig | awk '/inet6 /{print $2}' | sed 's/%.*//' | grep -viE '^(fe80|::1|fc|fd)' | head -1)
 
 info "Configuración del servidor"
 printf "FQDN del servidor (ej: panel.ejemplo.com): "; read -r PANEL_FQDN
 printf "IP del servidor [%s]: " "$LOCAL_IP";          read -r SERVER_IP
 SERVER_IP="${SERVER_IP:-$LOCAL_IP}"
+printf "IPv6 del servidor (vacío = solo IPv4) [%s]: " "$LOCAL_IP6"; read -r SERVER_IP6
+SERVER_IP6="${SERVER_IP6:-$LOCAL_IP6}"
 printf "Email del postmaster [postmaster@%s]: " "$PANEL_FQDN"; read -r POSTMASTER_EMAIL
 POSTMASTER_EMAIL="${POSTMASTER_EMAIL:-postmaster@$PANEL_FQDN}"
 printf "Zona horaria (ej: Europe/Madrid) [UTC]: ";    read -r TIMEZONE
@@ -523,6 +526,7 @@ UPDATE x_settings SET so_value_tx='$DNS_NS2'            WHERE so_name_vc='dns_ns
 UPDATE x_settings SET so_value_tx='$DNS_NS1_IP'         WHERE so_name_vc='dns_ns1_ip';
 UPDATE x_settings SET so_value_tx='$DNS_NS2_IP'         WHERE so_name_vc='dns_ns2_ip';
 UPDATE x_settings SET so_value_tx='$SERVER_IP'          WHERE so_name_vc='server_ip';
+UPDATE x_settings SET so_value_tx='$SERVER_IP6'         WHERE so_name_vc='server_ip6';
 "
 
 # La plantilla de zona por defecto (x_dns_create, con :NS1:/:NS2:/:IP:/:DOMAIN:) ya
@@ -2135,15 +2139,15 @@ if [ "$NODE_ROLE" = "S" ]; then
         UPDATE x_settings SET so_value_tx='$CLUSTER_TSIG'  WHERE so_name_vc='dns_tsig_key';
         UPDATE x_settings SET so_value_tx='$CLUSTER_TOKEN' WHERE so_name_vc='dns_cluster_token';
         UPDATE x_settings SET so_value_tx='true'           WHERE so_name_vc='dns_cluster_enabled';
-        INSERT IGNORE INTO x_dns_nodes (nd_name_vc,nd_ip_vc,nd_is_self_in,nd_enabled_in,nd_created_ts)
-            VALUES ('$PANEL_FQDN','$SERVER_IP',1,1,UNIX_TIMESTAMP());
+        INSERT IGNORE INTO x_dns_nodes (nd_name_vc,nd_ip_vc,nd_ip6_vc,nd_is_self_in,nd_enabled_in,nd_created_ts)
+            VALUES ('$PANEL_FQDN','$SERVER_IP',NULLIF('$SERVER_IP6',''),1,1,UNIX_TIMESTAMP());
         INSERT INTO x_dns_nodes (nd_name_vc,nd_ip_vc,nd_api_url_vc,nd_is_self_in,nd_enabled_in,nd_created_ts)
             VALUES ('$PRIMARY_NAME','$PRIMARY_IP','$PRIMARY_API_URL',0,1,UNIX_TIMESTAMP())
             ON DUPLICATE KEY UPDATE nd_ip_vc='$PRIMARY_IP', nd_api_url_vc='$PRIMARY_API_URL', nd_enabled_in=1;
     " 2>/dev/null
     # 3. Registrarse en el primario: crea el peer allí y añade ns/panel del nodo a la zona
     curl -sk -m15 -X POST -H "Authorization: Bearer $CLUSTER_TOKEN" -H "Content-Type: application/json" \
-        -d "{\"name\":\"$PANEL_FQDN\",\"ip\":\"$SERVER_IP\",\"api_url\":\"https://$PANEL_FQDN/bin/api.php\",\"panel_host\":\"$PANEL_FQDN\",\"ns_host\":\"$DNS_NS2\"}" \
+        -d "{\"name\":\"$PANEL_FQDN\",\"ip\":\"$SERVER_IP\",\"ip6\":\"$SERVER_IP6\",\"api_url\":\"https://$PANEL_FQDN/bin/api.php\",\"panel_host\":\"$PANEL_FQDN\",\"ns_host\":\"$DNS_NS2\"}" \
         "$PRIMARY_API_URL/v1/cluster/nodes" >/dev/null 2>&1 || warn "No se pudo registrar el nodo en el primario."
     ok "Nodo secundario unido al cluster (zona base NO recreada; esclaviza al primario)"
 else
@@ -2157,8 +2161,8 @@ else
         UPDATE x_settings SET so_value_tx='$_TNAME $_TSECRET' WHERE so_name_vc='dns_tsig_key';
         UPDATE x_settings SET so_value_tx='$CLUSTER_TOKEN'    WHERE so_name_vc='dns_cluster_token';
         UPDATE x_settings SET so_value_tx='true'              WHERE so_name_vc='dns_cluster_enabled';
-        INSERT IGNORE INTO x_dns_nodes (nd_name_vc,nd_ip_vc,nd_is_self_in,nd_enabled_in,nd_created_ts)
-            VALUES ('$PANEL_FQDN','$SERVER_IP',1,1,UNIX_TIMESTAMP());
+        INSERT IGNORE INTO x_dns_nodes (nd_name_vc,nd_ip_vc,nd_ip6_vc,nd_is_self_in,nd_enabled_in,nd_created_ts)
+            VALUES ('$PANEL_FQDN','$SERVER_IP',NULLIF('$SERVER_IP6',''),1,1,UNIX_TIMESTAMP());
     " 2>/dev/null
     php "$PANEL_PATH/bin/create_base_zone.php" > "$PANEL_DATA/logs/base-zone-install.log" 2>&1 || true
     ok "Nodo primario: TSIG + token de cluster generados y zona base creada"

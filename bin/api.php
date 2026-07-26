@@ -369,6 +369,7 @@ if ($resource === 'cluster') {
         $body      = json_decode(file_get_contents('php://input'), true) ?? [];
         $name      = strtolower(trim($body['name'] ?? ''));
         $ip        = trim($body['ip'] ?? '');
+        $ip6       = trim($body['ip6'] ?? '');
         $syncIp    = trim($body['sync_ip'] ?? '');
         $apiu      = trim($body['api_url'] ?? '');
         $panelHost = strtolower(trim($body['panel_host'] ?? ''));
@@ -377,12 +378,15 @@ if ($resource === 'cluster') {
             api_respond(422, ['error' => 'Unprocessable Entity', 'message' => 'name e ip válidos son obligatorios.', 'code' => 422]);
         }
         if ($syncIp !== '' && !filter_var($syncIp, FILTER_VALIDATE_IP)) { $syncIp = ''; }
+        // IPv6 pública del nodo (opcional): valida como IPv6; si no, se ignora (nodo solo IPv4).
+        if ($ip6 !== '' && !filter_var($ip6, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) { $ip6 = ''; }
+        $ip6Val  = ($ip6 !== '' ? $ip6 : null);
         $syncVal = ($syncIp !== '' ? $syncIp : null);   // IP de sync (túnel); NULL = usar la pública
         $zdbh->prepare(
-            "INSERT INTO x_dns_nodes (nd_name_vc, nd_ip_vc, nd_sync_ip_vc, nd_api_url_vc, nd_is_self_in, nd_enabled_in, nd_created_ts)
-             VALUES (:n, :i, :s, :u, 0, 1, :ts)
-             ON DUPLICATE KEY UPDATE nd_ip_vc=:i2, nd_sync_ip_vc=:s2, nd_api_url_vc=:u2, nd_enabled_in=1"
-        )->execute([':n' => $name, ':i' => $ip, ':s' => $syncVal, ':u' => ($apiu ?: null), ':ts' => time(), ':i2' => $ip, ':s2' => $syncVal, ':u2' => ($apiu ?: null)]);
+            "INSERT INTO x_dns_nodes (nd_name_vc, nd_ip_vc, nd_ip6_vc, nd_sync_ip_vc, nd_api_url_vc, nd_is_self_in, nd_enabled_in, nd_created_ts)
+             VALUES (:n, :i, :i6, :s, :u, 0, 1, :ts)
+             ON DUPLICATE KEY UPDATE nd_ip_vc=:i2, nd_ip6_vc=:i62, nd_sync_ip_vc=:s2, nd_api_url_vc=:u2, nd_enabled_in=1"
+        )->execute([':n' => $name, ':i' => $ip, ':i6' => $ip6Val, ':s' => $syncVal, ':u' => ($apiu ?: null), ':ts' => time(), ':i2' => $ip, ':i62' => $ip6Val, ':s2' => $syncVal, ':u2' => ($apiu ?: null)]);
 
         // Añadir a la zona del proveedor los A del nuevo nodo (ns y panel), si procede
         $provider = strtolower((string)ctrl_options::GetSystemOption('dns_provider_domain'));
@@ -432,6 +436,25 @@ if ($resource === 'cluster') {
                                             VALUES (:u,:name,:v,'NS','@',172800,:t,:ts)")
                                  ->execute([':u' => $uid, ':name' => $provider, ':v' => $vid, ':t' => $nsFqdn, ':ts' => time()]);
                             $added[] = 'NS:' . $nsFqdn;
+                        }
+                    }
+                    // (3) Registro AAAA (doble pila): si el nodo aporta IPv6, su ns/panel también en
+                    // IPv6, para que los nameservers del cluster queden alcanzables por IPv6. Mismo
+                    // patrón que el A: reapunta si existe, inserta si no. Idempotente.
+                    if ($ip6 !== '') {
+                        $ex6 = $zdbh->prepare("SELECT dn_id_pk, dn_target_vc FROM x_dns WHERE dn_vhost_fk=:v AND dn_type_vc='AAAA' AND dn_host_vc=:h AND dn_deleted_ts IS NULL LIMIT 1");
+                        $ex6->execute([':v' => $vid, ':h' => $host]);
+                        if ($e6 = $ex6->fetch()) {
+                            if ((string)$e6['dn_target_vc'] !== $ip6) {
+                                $zdbh->prepare("UPDATE x_dns SET dn_target_vc=:ip WHERE dn_id_pk=:id")
+                                     ->execute([':ip' => $ip6, ':id' => (int)$e6['dn_id_pk']]);
+                                $added[] = $host . '/AAAA';
+                            }
+                        } else {
+                            $zdbh->prepare("INSERT INTO x_dns (dn_acc_fk,dn_name_vc,dn_vhost_fk,dn_type_vc,dn_host_vc,dn_ttl_in,dn_target_vc,dn_created_ts)
+                                            VALUES (:u,:name,:v,'AAAA',:h,:ttl,:ip,:ts)")
+                                 ->execute([':u' => $uid, ':name' => $provider, ':v' => $vid, ':h' => $host, ':ttl' => $ttl, ':ip' => $ip6, ':ts' => time()]);
+                            $added[] = $host . '/AAAA';
                         }
                     }
                 }
