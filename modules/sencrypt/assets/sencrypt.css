@@ -106,3 +106,13 @@ body {font-family: Arial;}
 	th.icon img {
 		min-width: 24px;
 	}
+
+/* Editor de SANs de servicio del cert del panel (admin) */
+.sencrypt-sans-input {
+    width: 100%;
+    max-width: 640px;
+    display: block;
+    margin: 8px 0;
+    padding: 6px 8px;
+    box-sizing: border-box;
+}

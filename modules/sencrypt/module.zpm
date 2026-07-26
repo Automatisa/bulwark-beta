@@ -60,8 +60,24 @@
 					</tr>
 				<% endloop %>
 			</table>
-		</div>	
-	<% endif %>	
+		</div>
+
+		<div class="zgrid_wrapper">
+			<table class="table">
+				<h3><: Panel certificate — service names (SANs) :></h3>
+				<tr><td>
+					<p><: These names are added to your control panel certificate so mail and service endpoints present a valid certificate. Separate them with commas. :></p>
+					<p><b><: Always included automatically: :></b> <@ PanelSansAuto @></p>
+					<form action="./?module=sencrypt&action=SavePanelSans" method="post">
+						<@ CSFR_Tag @>
+						<input type="text" name="inPanelSans" value="<@ PanelSansValue @>" placeholder="mail.example.com, ftp.example.com" class="sencrypt-sans-input">
+						<button class="button-loader btn btn-primary" type="submit" name="inSave" value="1"><i class="bi bi-floppy me-1"></i><: Save :></button>
+					</form>
+					<small><: Changes apply on the next certificate renewal. Only names under a zone this panel manages are included (validated by DNS-01). :></small>
+				</td></tr>
+			</table>
+		</div>
+	<% endif %>
 
 	<@ ReissueMessage @>
 	<div class="zgrid_wrapper" >

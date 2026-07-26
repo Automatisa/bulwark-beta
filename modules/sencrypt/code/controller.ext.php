@@ -556,6 +556,51 @@ class module_controller extends ctrl_module {
 		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
 	}
 
+	# ===== Editor de SANs del certificado del PANEL (solo admin) ================================
+	# El cert del panel se compone de: el FQDN del panel + los vhosts cableados al cert del panel
+	# (p.ej. mta-sts, por rol) + esta LISTA EDITABLE de nombres de servicio (correo, ftp, ...). Aquí
+	# el admin la edita sin tocar la BD; el hook de emisión (OnDaemonHour) la respeta tal cual.
+
+	# Nombres SIEMPRE incluidos por rol (solo lectura): FQDN del panel + vhosts cableados al cert.
+	static function getPanelSansAuto() {
+		global $zdbh;
+		if (!self::getAdmin()) { return ''; }
+		$domain = strtolower((string)ctrl_options::GetSystemOption('bulwark_domain'));
+		$names  = array($domain);
+		$w = $zdbh->prepare("SELECT DISTINCT LOWER(vh_name_vc) FROM x_vhosts WHERE vh_deleted_ts IS NULL AND vh_ssl_tx LIKE ?");
+		$w->execute(array('%/' . $domain . '/%'));
+		foreach ($w->fetchAll(PDO::FETCH_COLUMN) as $vn) { if ($vn !== '' && !in_array($vn, $names, true)) { $names[] = $vn; } }
+		return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
+	}
+
+	# Valor actual de la lista editable panel_le_extra_sans (para el <input>).
+	static function getPanelSansValue() {
+		if (!self::getAdmin()) { return ''; }
+		return htmlspecialchars((string)ctrl_options::GetSystemOption('panel_le_extra_sans'), ENT_QUOTES, 'UTF-8');
+	}
+
+	# Guarda la lista editable de SANs de servicio del cert del panel. Sanea a hostnames válidos
+	# (FQDN); el hook ya descarta después los que no caen bajo una zona gestionada por el panel.
+	static function doSavePanelSans() {
+		global $zdbh, $controller;
+		runtime_csfr::Protect();
+		if (!self::getAdmin()) { if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; } return; }
+		$raw = (string)$controller->GetControllerRequest('FORM', 'inPanelSans');
+		$out = array();
+		foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
+			$h = trim($h, ". \t\r\n");
+			if ($h === '') { continue; }
+			if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h) && !in_array($h, $out, true)) {
+				$out[] = $h;
+			}
+		}
+		$val = implode(',', $out);
+		$zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
+		$_SESSION['sencrypt_flash'] = array('ok',
+			ui_language::translate('Panel certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('They apply on the next renewal.'));
+		if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; }
+	}
+
 	static function Show_list_of_active_domain_ssl() {
 		global $zdbh, $controller;
 	    $currentuser = ctrl_users::GetUserDetail();
