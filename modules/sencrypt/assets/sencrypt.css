@@ -126,3 +126,24 @@ body {font-family: Arial;}
     margin-right: 4px;
     box-sizing: border-box;
 }
+
+/* Selector plegable de SAN extra por dominio */
+details.sencrypt-sans { margin-top: 6px; }
+details.sencrypt-sans > summary {
+    cursor: pointer;
+    display: inline-block;
+    padding: 4px 8px;
+    background: #6c757d;
+    color: #fff;
+    border-radius: 4px;
+    font-size: 0.85em;
+    user-select: none;
+}
+details.sencrypt-sans[open] > summary { margin-bottom: 6px; }
+.sencrypt-sans-opt {
+    display: block;
+    font-weight: normal;
+    margin: 2px 0;
+    white-space: nowrap;
+}
+.sencrypt-sans-opt input { margin-right: 6px; }

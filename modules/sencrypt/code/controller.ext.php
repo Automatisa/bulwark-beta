@@ -594,60 +594,121 @@ class module_controller extends ctrl_module {
 				$out[] = $h;
 			}
 		}
+		sort($out);
 		$val = implode(',', $out);
-		$zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
-		$_SESSION['sencrypt_flash'] = array('ok',
-			ui_language::translate('Panel certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('They apply on the next renewal.'));
+		$cur = array_filter(array_map('trim', explode(',', strtolower((string)ctrl_options::GetSystemOption('panel_le_extra_sans')))));
+		sort($cur);
+		if ($val === implode(',', $cur)) {
+			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('No changes were made.'));
+		} else {
+			$zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
+			$_SESSION['sencrypt_flash'] = array('ok',
+				ui_language::translate('Panel certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('They apply on the next renewal.'));
+		}
 		if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; }
 	}
 
 	# ===== Editor por-dominio de los SAN extra del cert LE del usuario ==========================
 	# Cada usuario elige subdominios PROPIOS a incluir en el cert de su dominio (p.ej. shop.dominio).
 
-	static function VhostSansEditor($rowdomains) {
-		// Subdominios (type 2): su cert es solo el subdominio; sin editor.
-		if ((int)($rowdomains['vh_type_in'] ?? 0) === 2) { return ''; }
-		// Wildcard: *.dominio ya cubre todos los subdominios.
-		if ((int)($rowdomains['vh_le_wildcard_in'] ?? 0) === 1) {
-			return '<small>' . ui_language::translate('Covered by wildcard') . ' *.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '</small>';
+	# Subdominios del dominio que EXISTEN en el DNS y NO tienen su propio cert (no son vhost): los
+	# únicos candidatos a SAN extra del cert del dominio padre (un subdominio-vhost emite el suyo por
+	# SNI). Devuelve array de FQDN. Anti-IDOR: solo el dominio del propio usuario.
+	static function getEligibleSubdomains($domain, $uid) {
+		global $zdbh;
+		$domain = strtolower($domain);
+		$q = $zdbh->prepare(
+			"SELECT DISTINCT LOWER(d.dn_host_vc) FROM x_dns d
+			   JOIN x_vhosts v ON v.vh_id_pk = d.dn_vhost_fk
+			  WHERE v.vh_name_vc = :d AND v.vh_type_in = 1 AND v.vh_acc_fk = :u AND v.vh_deleted_ts IS NULL
+			    AND d.dn_deleted_ts IS NULL AND d.dn_type_vc IN ('A','AAAA','CNAME')
+			    AND d.dn_host_vc NOT IN ('@','www','*','')");
+		$q->execute(array(':d' => $domain, ':u' => (int)$uid));
+		// Excluir por ROL (no por nombre): el FQDN del panel y los nameservers (targets NS de la zona);
+		// no son sitios del usuario y no deben ofrecerse como SAN de su cert.
+		$exclude = array(strtolower((string)ctrl_options::GetSystemOption('bulwark_domain')) => true);
+		$nsq = $zdbh->prepare("SELECT DISTINCT LOWER(TRIM(TRAILING '.' FROM d.dn_target_vc)) FROM x_dns d JOIN x_vhosts v ON v.vh_id_pk=d.dn_vhost_fk WHERE v.vh_name_vc=:d AND v.vh_deleted_ts IS NULL AND d.dn_type_vc='NS' AND d.dn_deleted_ts IS NULL");
+		$nsq->execute(array(':d' => $domain));
+		foreach ($nsq->fetchAll(PDO::FETCH_COLUMN) as $ns) { if ($ns !== '') { $exclude[$ns] = true; } }
+		$isVhost = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=? AND vh_deleted_ts IS NULL AND vh_type_in IN (1,2)");
+		$out = array();
+		foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $label) {
+			$label = trim(strtolower((string)$label));
+			if ($label === '' || strpos($label, '*') !== false) { continue; }
+			$fqdn = $label . '.' . $domain;
+			if (isset($exclude[$fqdn])) { continue; }             // panel o nameserver
+			$isVhost->execute(array($fqdn));
+			if ((int)$isVhost->fetchColumn() > 0) { continue; }    // tiene su propio cert -> no ofrecer
+			if (!in_array($fqdn, $out, true)) { $out[] = $fqdn; }
 		}
-		$val = htmlspecialchars((string)($rowdomains['vh_le_extra_sans'] ?? ''), ENT_QUOTES, 'UTF-8');
-		$ph  = 'shop.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8');
-		return '<form action="./?module=sencrypt&action=SaveVhostSans" method="post" style="display:inline">'
-			. runtime_csfr::Token()
-			. '<input type="hidden" name="inDomain" value="' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '">'
-			. '<input type="text" name="inSans" value="' . $val . '" placeholder="' . $ph . '" class="sencrypt-sans-row">'
-			. '<button class="button-loader btn btn-secondary" type="submit" name="inSaveSans" value="1"><i class="bi bi-tags me-1"></i>' . ui_language::translate('Extra names') . '</button>'
-			. '</form>';
+		sort($out);
+		return $out;
 	}
 
-	# Guarda los SAN extra del PROPIO dominio del usuario (anti-IDOR: filtra por vh_acc_fk; solo
-	# subdominios del propio dominio). El hook los añade por DNS-01 en la próxima emisión.
+	# Selector (checkboxes) de los SAN extra del cert del dominio del usuario. Solo ofrece subdominios
+	# reales del DNS sin cert propio (ver getEligibleSubdomains). Plegable (<details>), sin texto libre.
+	static function VhostSansEditor($rowdomains) {
+		if ((int)($rowdomains['vh_type_in'] ?? 0) === 2) { return ''; }          // subdominio: cert propio
+		if ((int)($rowdomains['vh_le_wildcard_in'] ?? 0) === 1) {                 // wildcard: ya los cubre
+			return '<small>' . ui_language::translate('Covered by wildcard') . ' *.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '</small>';
+		}
+		$cu     = ctrl_users::GetUserDetail();
+		$domain = strtolower($rowdomains['vh_name_vc']);
+		$elig   = self::getEligibleSubdomains($domain, $cu['userid']);
+		$sel    = array_filter(array_map('trim', explode(',', strtolower((string)($rowdomains['vh_le_extra_sans'] ?? '')))));
+		$summary = htmlspecialchars(ui_language::translate('Extra names'), ENT_QUOTES, 'UTF-8') . ' (' . count($sel) . ')';
+		if (empty($elig)) {
+			return '<details class="sencrypt-sans"><summary>' . $summary . '</summary>'
+				. '<small>' . ui_language::translate('No eligible subdomains in DNS. A subdomain that has its own site gets its own certificate; add a plain DNS record to offer it here.') . '</small></details>';
+		}
+		$opts = '';
+		foreach ($elig as $fqdn) {
+			$chk = in_array($fqdn, $sel, true) ? ' checked' : '';
+			$h = htmlspecialchars($fqdn, ENT_QUOTES, 'UTF-8');
+			$opts .= '<label class="sencrypt-sans-opt"><input type="checkbox" name="inSans[]" value="' . $h . '"' . $chk . '> ' . $h . '</label>';
+		}
+		return '<details class="sencrypt-sans"><summary>' . $summary . '</summary>'
+			. '<form action="./?module=sencrypt&action=SaveVhostSans" method="post">'
+			. runtime_csfr::Token()
+			. '<input type="hidden" name="inDomain" value="' . htmlspecialchars($domain, ENT_QUOTES, 'UTF-8') . '">'
+			. $opts
+			. '<button class="button-loader btn btn-secondary" type="submit"><i class="bi bi-floppy me-1"></i>' . ui_language::translate('Save') . '</button>'
+			. '</form></details>';
+	}
+
+	# Guarda la selección de SAN extra del PROPIO dominio. Anti-IDOR (vh_acc_fk) + anti-tamper (solo
+	# subdominios ELEGIBLES reales, re-validados en servidor). No dice "guardado" si no hubo cambios.
 	static function doSaveVhostSans() {
 		global $zdbh, $controller;
 		runtime_csfr::Protect();
 		$cu     = ctrl_users::GetUserDetail();
 		$domain = strtolower((string)$controller->GetControllerRequest('FORM', 'inDomain'));
-		$q = $zdbh->prepare("SELECT vh_id_pk FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in<>2");
+		$q = $zdbh->prepare("SELECT vh_id_pk, vh_le_extra_sans FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in<>2");
 		$q->execute(array(':d' => $domain, ':u' => (int)$cu['userid']));
-		$vid = $q->fetchColumn();
-		if (!$vid) {
+		$vh = $q->fetch(PDO::FETCH_ASSOC);
+		if (!$vh) {
 			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('Domain not valid.'));
+			if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
+			return;
+		}
+		$elig   = self::getEligibleSubdomains($domain, $cu['userid']);
+		$posted = (isset($_POST['inSans']) && is_array($_POST['inSans'])) ? $_POST['inSans'] : array();
+		$out = array();
+		foreach ($posted as $p) {
+			$p = strtolower(trim((string)$p));
+			if (in_array($p, $elig, true) && !in_array($p, $out, true)) { $out[] = $p; }
+		}
+		sort($out);
+		$new = implode(',', $out);
+		$cur = array_filter(array_map('trim', explode(',', strtolower((string)($vh['vh_le_extra_sans'] ?? '')))));
+		sort($cur);
+		if ($new === implode(',', $cur)) {
+			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('No changes were made.'));
 		} else {
-			$raw = (string)$controller->GetControllerRequest('FORM', 'inSans');
-			$suf = '.' . $domain;
-			$out = array();
-			foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
-				$h = trim($h, ". \t\r\n");
-				if ($h === '' || in_array($h, $out, true)) { continue; }
-				$isFqdn = preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h);
-				if ($isFqdn && substr($h, -strlen($suf)) === $suf) { $out[] = $h; }
-			}
-			$val = implode(',', $out);
 			$zdbh->prepare("UPDATE x_vhosts SET vh_le_extra_sans=:v WHERE vh_id_pk=:id")
-			     ->execute(array(':v' => ($val === '' ? null : $val), ':id' => (int)$vid));
+			     ->execute(array(':v' => ($new === '' ? null : $new), ':id' => (int)$vh['vh_id_pk']));
 			$_SESSION['sencrypt_flash'] = array('ok',
-				ui_language::translate('Extra certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('Press Reissue to apply now, or they apply on renewal.'));
+				ui_language::translate('Extra certificate names saved') . ': ' . ($new === '' ? '—' : htmlspecialchars($new, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('Press Reissue to apply now, or they apply on renewal.'));
 		}
 		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
 	}
