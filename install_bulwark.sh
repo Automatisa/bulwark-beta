@@ -514,8 +514,18 @@ ok "Usuarios de DB creados"
 # La contraseña de zadmin se fija más abajo con bin/setzadmin (tras crear db.php),
 # que genera hash+salt coherentes con runtime_hash, la crypto key y la API key.
 
+# SANs extra del cert del panel: mail/ftp/mta-sts bajo el dominio proveedor (no cableado:
+# derivado del proveedor real). Así el X509 del MX coincide, FTPS presenta cert válido y
+# el host de la política MTA-STS queda cubierto. El hook solo añade los que gestiona el panel.
+if [ -n "$DNS_PROVIDER_DOMAIN" ]; then
+  PANEL_EXTRA_SANS="mail.$DNS_PROVIDER_DOMAIN,ftp.$DNS_PROVIDER_DOMAIN,mta-sts.$DNS_PROVIDER_DOMAIN"
+else
+  PANEL_EXTRA_SANS=""
+fi
+
 # Configurar x_settings clave
 $MYSQL bulwark_core -e "
+UPDATE x_settings SET so_value_tx='$PANEL_EXTRA_SANS' WHERE so_name_vc='panel_le_extra_sans';
 UPDATE x_settings SET so_value_tx='postfix.php'     WHERE so_name_vc='mailserver_php';
 UPDATE x_settings SET so_value_tx='bulwark_postfix' WHERE so_name_vc='mailserver_db';
 UPDATE x_settings SET so_value_tx='$PANEL_FQDN'     WHERE so_name_vc='bulwark_domain';
@@ -2165,7 +2175,11 @@ else
             VALUES ('$PANEL_FQDN','$SERVER_IP',NULLIF('$SERVER_IP6',''),1,1,UNIX_TIMESTAMP());
     " 2>/dev/null
     php "$PANEL_PATH/bin/create_base_zone.php" > "$PANEL_DATA/logs/base-zone-install.log" 2>&1 || true
-    ok "Nodo primario: TSIG + token de cluster generados y zona base creada"
+    # MTA-STS del dominio proveedor: crea el subdominio mta-sts, la política, los DNS y el SAN del
+    # cert. Así una instalación nueva sirve MTA-STS sola (la política queda activa cuando el daemon
+    # de sencrypt emita el cert del panel con el SAN mta-sts, que ya está en panel_le_extra_sans).
+    php "$PANEL_PATH/bin/setup_mtasts.php" > "$PANEL_DATA/logs/mtasts-install.log" 2>&1 || true
+    ok "Nodo primario: TSIG + token de cluster generados, zona base y MTA-STS creados"
 fi
 
 # Política de verificación TLS del canal de control del cluster (off/pin/ca, elegida arriba). En

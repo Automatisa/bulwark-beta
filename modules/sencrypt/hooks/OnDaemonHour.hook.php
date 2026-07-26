@@ -488,15 +488,20 @@ function renewPanelCertificates() {
 					require_once 'modules/sencrypt/code/controller.ext.php';
 					global $zdbh;
 					$panelCertDomains = array($domain);
-					$provForSts = ctrl_options::GetSystemOption('dns_provider_domain');
-					if ($provForSts != null) {
-						$mtaStsHost = 'mta-sts.' . $provForSts;
-						// Añadir el SAN si el subdominio mta-sts está dado de alta como vhost. NO usamos
-						// checkDNSIsLive porque consulta la vista DNS interna (127.0.0.1), que puede servir
-						// una copia vieja de la zona sin el registro -> el SAN quedaría fuera.
-						$stsChk = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=:h AND vh_deleted_ts IS NULL");
-						$stsChk->execute([':h' => $mtaStsHost]);
-						if ((int)$stsChk->fetchColumn() > 0) { $panelCertDomains[] = $mtaStsHost; }
+					// SANs adicionales del cert del panel (lista configurable, NO nombres cableados):
+					// p.ej. mail.<dominio> (para que el X509 del MX coincida), ftp.<dominio> (FTPS) y
+					// mta-sts.<dominio> (host de la política MTA-STS). Se rellena en el instalador según
+					// el dominio proveedor real, así funciona con cualquier FQDN (panel., hermes., etc.).
+					// Solo se añade un SAN si cae bajo una zona que gestiona el panel (para poder validar
+					// por DNS-01, ya que los subdominios no sirven el reto HTTP-01). Con extras -> DNS-01.
+					$extraSans = (string)ctrl_options::GetSystemOption('panel_le_extra_sans');
+					if ($extraSans !== '') {
+						$zoneChk = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_type_in=1 AND vh_deleted_ts IS NULL AND (vh_name_vc=:h1 OR :h2 LIKE CONCAT('%.', vh_name_vc))");
+						foreach (array_filter(array_map('trim', explode(',', strtolower($extraSans)))) as $san) {
+							if ($san === '' || $san === strtolower($domain) || in_array($san, $panelCertDomains, true)) { continue; }
+							$zoneChk->execute([':h1' => $san, ':h2' => $san]);
+							if ((int)$zoneChk->fetchColumn() > 0) { $panelCertDomains[] = $san; }
+						}
 					}
 					if (count($panelCertDomains) > 1) {
 						$le->signDomains($panelCertDomains, false, $replaces, 'dns-01',
