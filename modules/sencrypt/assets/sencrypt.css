@@ -147,3 +147,6 @@ details.sencrypt-sans[open] > summary { margin-bottom: 6px; }
     white-space: nowrap;
 }
 .sencrypt-sans-opt input { margin-right: 6px; }
+
+/* Lista de nombres (SANs) del cert en las tablas */
+td small { color: #555; word-break: break-word; }

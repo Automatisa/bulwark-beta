@@ -278,7 +278,7 @@ class module_controller extends ctrl_module {
 				<button class="button-loader btn btn-danger" type="submit" id="button" name="inRevokeSSL" id="inRevokePanelSSL" value="inRevokePanelSSL"><i class="bi bi-slash-circle me-1"></i>' . ui_language::translate("Revoke") . '</button>
 			</form>';
 		
-			$panelres[] = array('Active_Panel_Domain' => $panelDomain, 'Active_Panel_Provider' => $sslvendor, 'Active_Panel_Days' =>  $paneldays, 'Active_Panel_Button' => $panelDeleteButton,  'Active_Panel_Revoke' => $panelRevokeButton);
+			$panelres[] = array('Active_Panel_Domain' => $panelDomain, 'Active_Panel_Names' => self::certSans($certinfo), 'Active_Panel_Provider' => $sslvendor, 'Active_Panel_Days' =>  $paneldays, 'Active_Panel_Button' => $panelDeleteButton,  'Active_Panel_Revoke' => $panelRevokeButton);
 		
 		# If third party ssl show
 		} elseif ( is_dir( $panelCertPath . $currentuser["username"] . "/ssl/sencrypt/third_party/" . $panelDomain . "/" ) ) {
@@ -303,11 +303,11 @@ class module_controller extends ctrl_module {
 				$paneldays = ui_language::translate("Expiry in") . ' ' . $panelday . ' ' . ui_language::translate("days") . ".";
 			}
 		
-			$panelres[] = array('Active_Panel_Domain' => $panelDomain, 'Active_Panel_Provider' => $sslvendor, 'Active_Panel_Days' =>  $paneldays, 'Active_Panel_Button' => $panelDeleteButton, 'Active_Panel_Revoke' => NULL);
+			$panelres[] = array('Active_Panel_Domain' => $panelDomain, 'Active_Panel_Names' => self::certSans($certinfo), 'Active_Panel_Provider' => $sslvendor, 'Active_Panel_Days' =>  $paneldays, 'Active_Panel_Button' => $panelDeleteButton, 'Active_Panel_Revoke' => NULL);
 		
 		} else {
 
-			$panelres[] = array('Active_Panel_Domain' => ui_language::translate("No Active Panel Domain Certificates"), 'Active_Panel_Provider' => NULL, 'Active_Panel_Days' =>  NULL, 'Active_Panel_Button' => NULL, 'Active_Panel_Revoke' => NULL);
+			$panelres[] = array('Active_Panel_Domain' => ui_language::translate("No Active Panel Domain Certificates"), 'Active_Panel_Names' => NULL, 'Active_Panel_Provider' => NULL, 'Active_Panel_Days' =>  NULL, 'Active_Panel_Button' => NULL, 'Active_Panel_Revoke' => NULL);
 			
 		}
 		return $panelres;
@@ -556,57 +556,9 @@ class module_controller extends ctrl_module {
 		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
 	}
 
-	# ===== Editor de SANs del certificado del PANEL (solo admin) ================================
-	# El cert del panel se compone de: el FQDN del panel + los vhosts cableados al cert del panel
-	# (p.ej. mta-sts, por rol) + esta LISTA EDITABLE de nombres de servicio (correo, ftp, ...). Aquí
-	# el admin la edita sin tocar la BD; el hook de emisión (OnDaemonHour) la respeta tal cual.
-
-	# Nombres SIEMPRE incluidos por rol (solo lectura): FQDN del panel + vhosts cableados al cert.
-	static function getPanelSansAuto() {
-		global $zdbh;
-		if (!self::getAdmin()) { return ''; }
-		$domain = strtolower((string)ctrl_options::GetSystemOption('bulwark_domain'));
-		$names  = array($domain);
-		$w = $zdbh->prepare("SELECT DISTINCT LOWER(vh_name_vc) FROM x_vhosts WHERE vh_deleted_ts IS NULL AND vh_ssl_tx LIKE ?");
-		$w->execute(array('%/' . $domain . '/%'));
-		foreach ($w->fetchAll(PDO::FETCH_COLUMN) as $vn) { if ($vn !== '' && !in_array($vn, $names, true)) { $names[] = $vn; } }
-		return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
-	}
-
-	# Valor actual de la lista editable panel_le_extra_sans (para el <input>).
-	static function getPanelSansValue() {
-		if (!self::getAdmin()) { return ''; }
-		return htmlspecialchars((string)ctrl_options::GetSystemOption('panel_le_extra_sans'), ENT_QUOTES, 'UTF-8');
-	}
-
-	# Guarda la lista editable de SANs de servicio del cert del panel. Sanea a hostnames válidos
-	# (FQDN); el hook ya descarta después los que no caen bajo una zona gestionada por el panel.
-	static function doSavePanelSans() {
-		global $zdbh, $controller;
-		runtime_csfr::Protect();
-		if (!self::getAdmin()) { if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; } return; }
-		$raw = (string)$controller->GetControllerRequest('FORM', 'inPanelSans');
-		$out = array();
-		foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
-			$h = trim($h, ". \t\r\n");
-			if ($h === '') { continue; }
-			if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h) && !in_array($h, $out, true)) {
-				$out[] = $h;
-			}
-		}
-		sort($out);
-		$val = implode(',', $out);
-		$cur = array_filter(array_map('trim', explode(',', strtolower((string)ctrl_options::GetSystemOption('panel_le_extra_sans')))));
-		sort($cur);
-		if ($val === implode(',', $cur)) {
-			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('No changes were made.'));
-		} else {
-			$zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
-			$_SESSION['sencrypt_flash'] = array('ok',
-				ui_language::translate('Panel certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('They apply on the next renewal.'));
-		}
-		if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; }
-	}
+	# Nota: la lista de SANs de servicio del cert del PANEL (panel_le_extra_sans) se edita ahora en el
+	# módulo "Bulwark Config" (es config de sistema, admin-only), no aquí. Aquí solo se MUESTRAN los
+	# nombres reales del cert del panel (columna Names de "Your Control Panel Certificate").
 
 	# ===== Editor por-dominio de los SAN extra del cert LE del usuario ==========================
 	# Cada usuario elige subdominios PROPIOS a incluir en el cert de su dominio (p.ej. shop.dominio).
@@ -751,6 +703,17 @@ class module_controller extends ctrl_module {
 		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
 	}
 
+	# Devuelve los nombres (SAN) que cubre un certificado ya parseado (openssl_x509_parse), en claro.
+	static function certSans($certinfo) {
+		if (!is_array($certinfo) || empty($certinfo['extensions']['subjectAltName'])) { return ''; }
+		$sans = array();
+		foreach (explode(',', $certinfo['extensions']['subjectAltName']) as $s) {
+			$s = trim(preg_replace('/^DNS:/i', '', trim($s)));
+			if ($s !== '' && !in_array($s, $sans, true)) { $sans[] = $s; }
+		}
+		return implode(', ', $sans);
+	}
+
 	static function Show_list_of_active_domain_ssl() {
 		global $zdbh, $controller;
 	    $currentuser = ctrl_users::GetUserDetail();
@@ -802,7 +765,7 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ".";
 					}
 							
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL );
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL );
 					
 				# If Letsencrypt cert	
 				} elseif ( is_file(ctrl_options::GetSystemOption('hosted_dir') . $currentuser["username"] . "/ssl/sencrypt/letsencrypt/" . $rowdomains['vh_name_vc'] . "/cert.pem" ) ) {
@@ -835,18 +798,18 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ' - ' . ui_language::translate("Auto-renewal in") . ' ' . $reNewDay . ' ' . ui_language::translate("days") . '.';
 					}
 					
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains), 'Sans_AC' => self::VhostSansEditor($rowdomains));
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains), 'Sans_AC' => self::VhostSansEditor($rowdomains));
 					
 				}
 			}
 			if (!$res)
 			{
-				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
+				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
 			}
 
 		} else {		
 								
-			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
+			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
 			
 		}
 		
