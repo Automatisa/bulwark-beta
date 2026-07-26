@@ -9,9 +9,13 @@
 # search [(lecrypt) for LetsEncrypt code changes: tg] [make ssl: LeClient or LePanel]
 
 # for LEscript you can use any logger according to Psr\Log\LoggerInterface
-class Logger {
-	function __call($name, $arguments) {
-		echo date('Y-m-d H:i:s')." [$name] " . $arguments[0] . "\n";
+# Guard: este controlador se incluye desde OnDaemonHour.hook.php (que ya declara Logger) al
+# emitir por DNS-01; sin el guard, PHP aborta con "Cannot redeclare class Logger".
+if (!class_exists('Logger')) {
+	class Logger {
+		function __call($name, $arguments) {
+			echo date('Y-m-d H:i:s')." [$name] " . $arguments[0] . "\n";
+		}
 	}
 }
 //$logger = new Logger();
@@ -165,10 +169,16 @@ class module_controller extends ctrl_module {
 
 	// Sondea el BIND local hasta que el TXT $recordName contenga (o deje de contener) $value.
 	private static function Dns01WaitTxt($recordName, $value, $want, $timeout = 60) {
+		// Consultar la vista AUTORITATIVA (server_ip), no la recursiva interna (127.0.0.1): en la
+		// arquitectura de dos vistas, la interna puede servir una copia vieja de la zona sin el reto
+		// TXT recién puesto -> la espera nunca lo vería. Es además lo correcto: LE consulta la
+		// autoritativa. Fallback a 127.0.0.1 si no hay server_ip.
+		$authNs = ctrl_options::GetSystemOption('server_ip');
+		if (!$authNs) { $authNs = '127.0.0.1'; }
 		$deadline = time() + $timeout;
 		do {
 			$out = array();
-			@exec('/usr/local/bin/dig +short @127.0.0.1 TXT ' . escapeshellarg($recordName) . ' 2>/dev/null', $out);
+			@exec('/usr/local/bin/dig +short @' . escapeshellarg($authNs) . ' TXT ' . escapeshellarg($recordName) . ' 2>/dev/null', $out);
 			$found = false;
 			foreach ($out as $line) { if (strpos($line, $value) !== false) { $found = true; break; } }
 			if ($found === $want) return true;

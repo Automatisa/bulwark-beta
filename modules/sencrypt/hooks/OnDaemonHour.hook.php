@@ -480,8 +480,30 @@ function renewPanelCertificates() {
 					if (ctrl_options::GetSystemOption("le_ari_enabled") === "true") {
 						try { $replaces = $le->getAriCertID("$certlocation/cert.pem"); } catch (\Exception $e) { $replaces = ''; }
 					}
-					// Create panel domain cert (only the panel domain, no www)
-					$le->signDomains(array($domain), false, $replaces);
+					// Cert del panel: el dominio del panel y, si existe y resuelve, el host MTA-STS
+					// (mta-sts.<dominio-proveedor>) como SAN, para que https://mta-sts.<dominio> presente
+					// un cert VÁLIDO (la política MTA-STS lo exige). Con SAN se emite por DNS-01 (reto
+					// _acme-challenge en BIND) porque los subdominios no sirven el reto HTTP-01. La clave
+					// se reutiliza -> el hash SPKI no cambia -> el DANE del correo sigue válido.
+					require_once 'modules/sencrypt/code/controller.ext.php';
+					global $zdbh;
+					$panelCertDomains = array($domain);
+					$provForSts = ctrl_options::GetSystemOption('dns_provider_domain');
+					if ($provForSts != null) {
+						$mtaStsHost = 'mta-sts.' . $provForSts;
+						// Añadir el SAN si el subdominio mta-sts está dado de alta como vhost. NO usamos
+						// checkDNSIsLive porque consulta la vista DNS interna (127.0.0.1), que puede servir
+						// una copia vieja de la zona sin el registro -> el SAN quedaría fuera.
+						$stsChk = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=:h AND vh_deleted_ts IS NULL");
+						$stsChk->execute([':h' => $mtaStsHost]);
+						if ((int)$stsChk->fetchColumn() > 0) { $panelCertDomains[] = $mtaStsHost; }
+					}
+					if (count($panelCertDomains) > 1) {
+						$le->signDomains($panelCertDomains, false, $replaces, 'dns-01',
+							array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
+					} else {
+						$le->signDomains($panelCertDomains, false, $replaces);
+					}
 
 					// After successful renewal, update panel_ssl_tx in DB to point to new cert
 					$newCert = $certlocation . "cert.pem";

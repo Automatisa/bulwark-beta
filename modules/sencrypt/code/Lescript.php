@@ -180,6 +180,14 @@ class Lescript
             # --------------------------------------
             $response = $this->signedRequest($authz, "");
             $domain = $response['identifier']['value'];
+            # Si la autorización ya está validada (LE cachea autorizaciones válidas ~30 días), no hay
+            # que resolver ningún reto para ese identificador: se salta. Sin esto, al mezclar en un
+            # mismo cert un dominio ya autorizado (p.ej. por http-01 previo) con otro nuevo por dns-01,
+            # LE no ofrece el reto dns-01 del ya-válido y la emisión abortaba.
+            if (($response['status'] ?? '') === 'valid') {
+                $this->log("Authorization for $domain already valid, skipping challenge");
+                continue;
+            }
             if (empty($response['challenges'])) {
                 throw new RuntimeException("HTTP Challenge for $domain is not available. Whole response: " . json_encode($response));
             }
