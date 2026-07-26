@@ -488,20 +488,60 @@ function renewPanelCertificates() {
 					require_once 'modules/sencrypt/code/controller.ext.php';
 					global $zdbh;
 					$panelCertDomains = array($domain);
-					// SANs adicionales del cert del panel (lista configurable, NO nombres cableados):
-					// p.ej. mail.<dominio> (para que el X509 del MX coincida), ftp.<dominio> (FTPS) y
-					// mta-sts.<dominio> (host de la política MTA-STS). Se rellena en el instalador según
-					// el dominio proveedor real, así funciona con cualquier FQDN (panel., hermes., etc.).
-					// Solo se añade un SAN si cae bajo una zona que gestiona el panel (para poder validar
-					// por DNS-01, ya que los subdominios no sirven el reto HTTP-01). Con extras -> DNS-01.
-					$extraSans = (string)ctrl_options::GetSystemOption('panel_le_extra_sans');
-					if ($extraSans !== '') {
-						$zoneChk = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_type_in=1 AND vh_deleted_ts IS NULL AND (vh_name_vc=:h1 OR :h2 LIKE CONCAT('%.', vh_name_vc))");
-						foreach (array_filter(array_map('trim', explode(',', strtolower($extraSans)))) as $san) {
-							if ($san === '' || $san === strtolower($domain) || in_array($san, $panelCertDomains, true)) { continue; }
-							$zoneChk->execute([':h1' => $san, ':h2' => $san]);
-							if ((int)$zoneChk->fetchColumn() > 0) { $panelCertDomains[] = $san; }
+					// SANs del cert del panel por AUTODESCUBRIMIENTO (sin nombres cableados): se toman
+					// los hostnames de la zona del dominio proveedor cuyos A/AAAA apuntan a ESTE servidor
+					// (server_ip / server_ip6). Así el cert cubre los endpoints reales del panel (mail,
+					// mta-sts, ftp, autoconfig, ...) y se adapta solo al añadir/quitar registros, sin
+					// depender del FQDN concreto (panel., hermes., ...). Exclusiones: ns1/ns2 y www (solo
+					// DNS o ya cubiertos por el cert del apex), y los nombres que YA son un dominio propio
+					// (vhost tipo 1) porque tienen su propio cert. panel_le_extra_sans queda como añadido
+					// MANUAL opcional (p.ej. un nombre aún sin registro). Con extras -> DNS-01 (los
+					// subdominios no sirven el reto HTTP-01); la clave se reutiliza -> DANE intacto.
+					$prov = strtolower((string)ctrl_options::GetSystemOption('dns_provider_domain'));
+					$cand = array();
+					if ($prov !== '') {
+						$ips = array_values(array_filter(array(
+							(string)ctrl_options::GetSystemOption('server_ip'),
+							(string)ctrl_options::GetSystemOption('server_ip6'))));
+						if (!empty($ips)) {
+							$ph = implode(',', array_fill(0, count($ips), '?'));
+							$q = $zdbh->prepare(
+								"SELECT DISTINCT LOWER(d.dn_host_vc) FROM x_dns d
+								   JOIN x_vhosts v ON v.vh_id_pk = d.dn_vhost_fk
+								  WHERE v.vh_name_vc = ? AND v.vh_type_in = 1 AND v.vh_deleted_ts IS NULL
+								    AND d.dn_deleted_ts IS NULL AND d.dn_type_vc IN ('A','AAAA')
+								    AND d.dn_target_vc IN ($ph)");
+							$q->execute(array_merge(array($prov), $ips));
+							foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $label) {
+								// Nombres de nameserver (ns1/ns2/ns1v6/...) y www: solo DNS o ya cubiertos por
+								// el cert del apex. No sirven TLS propio -> fuera.
+								if (preg_match('/^ns[0-9]/', $label) || $label === 'www') { continue; }
+								$cand[($label === '@' || $label === '') ? $prov : $label . '.' . $prov] = true;
+							}
 						}
+					}
+					// Añadidos manuales opcionales (union).
+					foreach (array_filter(array_map('trim', explode(',', strtolower((string)ctrl_options::GetSystemOption('panel_le_extra_sans'))))) as $s) {
+						if ($s !== '') { $cand[$s] = true; }
+					}
+					// Filtro final. Se INCLUYE un candidato solo si:
+					//  - no es el propio FQDN del panel (ya está), y
+					//  - o NO es un vhost (nombre de servicio puro: mail/ftp/smtp/... que sirven Postfix/
+					//    Dovecot/ProFTPD con el cert del panel), o SÍ es un vhost pero está cableado al
+					//    cert del panel (su vh_ssl_tx referencia el dir del cert del panel, p.ej. mta-sts).
+					//    Un vhost con su PROPIO cert (tipo 1 apex, o subdominios como 'tienda') se excluye:
+					//    ya presenta su cert por SNI. Y solo si cae bajo una zona gestionada (para DNS-01).
+					$vhChk   = $zdbh->prepare("SELECT vh_ssl_tx FROM x_vhosts WHERE vh_name_vc=? AND vh_deleted_ts IS NULL AND vh_type_in IN (1,2) ORDER BY (vh_ssl_tx IS NULL) LIMIT 1");
+					$zoneChk = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_type_in=1 AND vh_deleted_ts IS NULL AND (vh_name_vc=:h1 OR :h2 LIKE CONCAT('%.', vh_name_vc))");
+					foreach (array_keys($cand) as $san) {
+						if ($san === strtolower($domain) || in_array($san, $panelCertDomains, true)) { continue; }
+						$vhChk->execute([$san]);
+						$vrow = $vhChk->fetch(PDO::FETCH_ASSOC);
+						if ($vrow !== false && strpos((string)$vrow['vh_ssl_tx'], '/' . $domain . '/') === false) {
+							continue; // es un vhost con su propio cert (no cableado al del panel)
+						}
+						$zoneChk->execute([':h1' => $san, ':h2' => $san]);
+						if ((int)$zoneChk->fetchColumn() > 0) { $panelCertDomains[] = $san; }
 					}
 					if (count($panelCertDomains) > 1) {
 						$le->signDomains($panelCertDomains, false, $replaces, 'dns-01',

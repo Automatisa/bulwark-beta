@@ -514,18 +514,13 @@ ok "Usuarios de DB creados"
 # La contraseña de zadmin se fija más abajo con bin/setzadmin (tras crear db.php),
 # que genera hash+salt coherentes con runtime_hash, la crypto key y la API key.
 
-# SANs extra del cert del panel: mail/ftp/mta-sts bajo el dominio proveedor (no cableado:
-# derivado del proveedor real). Así el X509 del MX coincide, FTPS presenta cert válido y
-# el host de la política MTA-STS queda cubierto. El hook solo añade los que gestiona el panel.
-if [ -n "$DNS_PROVIDER_DOMAIN" ]; then
-  PANEL_EXTRA_SANS="mail.$DNS_PROVIDER_DOMAIN,ftp.$DNS_PROVIDER_DOMAIN,mta-sts.$DNS_PROVIDER_DOMAIN"
-else
-  PANEL_EXTRA_SANS=""
-fi
+# Nota: el cert del panel descubre solos sus SAN (mail/ftp/mta-sts/...) de los A/AAAA de la
+# zona del proveedor que apuntan a este servidor (ver OnDaemonHour.hook.php). panel_le_extra_sans
+# se deja VACÍO: solo se usa como añadido manual para un nombre aún sin registro DNS.
 
 # Configurar x_settings clave
 $MYSQL bulwark_core -e "
-UPDATE x_settings SET so_value_tx='$PANEL_EXTRA_SANS' WHERE so_name_vc='panel_le_extra_sans';
+UPDATE x_settings SET so_value_tx='' WHERE so_name_vc='panel_le_extra_sans';
 UPDATE x_settings SET so_value_tx='postfix.php'     WHERE so_name_vc='mailserver_php';
 UPDATE x_settings SET so_value_tx='bulwark_postfix' WHERE so_name_vc='mailserver_db';
 UPDATE x_settings SET so_value_tx='$PANEL_FQDN'     WHERE so_name_vc='bulwark_domain';
