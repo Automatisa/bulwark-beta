@@ -79,8 +79,10 @@ class runtime_sessionsecurity {
             //already set
         }else{
             $_SESSION['zUserSalt'] = $random;
-            // Fix: añadir HttpOnly y SameSite para proteger la cookie de sesión
-            setcookie("zUserSaltCookie", $random, ['expires' => time() + 60 * 60 * 24 * 30, 'path' => '/', 'httponly' => true, 'samesite' => 'Strict']);
+            // Fix: HttpOnly + SameSite. Y 'secure' CONSISTENTE con PHPSESSID (solo si la petición es
+            // HTTPS): sin esto, la cookie sin Secure se pisaba en accesos HTTP y se desincronizaba
+            // de la sesión (Secure) -> falso "hijacking" -> logout al entrar a un módulo.
+            setcookie("zUserSaltCookie", $random, ['expires' => time() + 60 * 60 * 24 * 30, 'path' => '/', 'httponly' => true, 'samesite' => 'Strict', 'secure' => (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')]);
         }
         return true;
     }
@@ -153,7 +155,7 @@ class runtime_sessionsecurity {
      * @return string The data.
      */
     static public function getProviedCookie(){
-        return $_COOKIE["zUserSaltCookie"];
+        return isset($_COOKIE["zUserSaltCookie"]) ? $_COOKIE["zUserSaltCookie"] : '';
     }
     
     /**
@@ -250,34 +252,27 @@ class runtime_sessionsecurity {
     static public function antiSessionHijacking(){
         $checkIP = self::checkIP();
         $checkUserAgent = self::checkAgent();
-        
+
         if(($checkIP == true) && ($checkUserAgent == true)){
-            if(isset($_GET['module'])){
-                $checkUserCookie = self::checkCookie();
-                if($checkUserCookie == true){
-                    return true;
-                }else{
-                    self::destroyCurrentSession();
-                    return false;
-                }
-            }else{
-                return true;
+            // IP y User-Agent COINCIDEN: es (con alta probabilidad) el mismo cliente. Si además la
+            // cookie de salt no cuadra en una petición de módulo, NO destruimos la sesión: esa
+            // desincronía tiene causas BENIGNAS (mezcla http/https por la que la cookie sin Secure se
+            // pisa, proxies/NAT, varias pestañas, navegación directa por URL/marcador). Antes se
+            // destruía -> el usuario veía "vuelve a introducir usuario/contraseña" en CADA módulo.
+            // La re-emitimos (se auto-sincroniza) y seguimos. El atado a IP/UA sigue protegiendo.
+            if(isset($_GET['module']) && self::checkCookie() != true){
+                self::setCookie();
             }
+            return true;
         }else{
             if(self::checkSessionSecurityEnabled() == false){
                 //proxies can cause fluxuations in the user agent and IP headers so user can disable it on login
-                if(isset($_GET['module'])){
-                    $checkUserCookie = self::checkCookie();
-                    if($checkUserCookie == true){
-                        return true;
-                    }else{
-                        self::destroyCurrentSession();
-                        return false;
-                    }
-                }else{
-                    return true;
+                if(isset($_GET['module']) && self::checkCookie() != true){
+                    self::setCookie(); // re-sincronizar en vez de destruir (mismo motivo de arriba)
                 }
+                return true;
             }else{
+                // IP/UA cambiaron y el usuario dejó el atado ACTIVO -> posible secuestro: destruir.
                 self::destroyCurrentSession();
                 return false;
             }
