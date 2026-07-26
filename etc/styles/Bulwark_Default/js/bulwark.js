@@ -123,6 +123,18 @@ var Sentora = {
             //     Sentora.loader.showLoader();
             // });
 
+            // Al volver con el botón "atrás", el navegador restaura la página desde el bfcache CON el
+            // overlay del spinner aún visible (se mostró al hacer click en un .button-loader) y el JS no
+            // se re-ejecuta -> el spinner se queda pegado y hay que refrescar. En 'pageshow' forzamos a
+            // ocultar el overlay (y parar el spinner si existe). Cubre bfcache y cualquier restauración.
+            if (window.addEventListener) {
+                window.addEventListener('pageshow', function() {
+                    $('#zloader_overlay').stop(true, true).hide();
+                    $('#zloader').hide();
+                    if (Sentora.loader.spinner) { try { Sentora.loader.spinner.stop(); } catch (e) {} }
+                });
+            }
+
         },
 
         showLoader: function() {
