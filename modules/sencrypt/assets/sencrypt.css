@@ -116,3 +116,13 @@ body {font-family: Arial;}
     padding: 6px 8px;
     box-sizing: border-box;
 }
+
+/* Editor por-dominio de SAN extra (fila de cert de cliente) */
+.sencrypt-sans-cell { margin-top: 4px; }
+.sencrypt-sans-row {
+    width: 180px;
+    max-width: 100%;
+    padding: 4px 6px;
+    margin-right: 4px;
+    box-sizing: border-box;
+}

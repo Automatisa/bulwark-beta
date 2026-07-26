@@ -114,6 +114,7 @@
 							{! Revoke_AC !}
 							{! Reissue_AC !}
 							{! Wildcard_AC !}
+							<div class="sencrypt-sans-cell">{! Sans_AC !}</div>
 						</td>
 					</tr>
 				<% endloop %>

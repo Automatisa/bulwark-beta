@@ -345,8 +345,24 @@ function renewCertificates() {
 						// Create domain without www. becuase its a subdomain
 						$le->signDomains(array($domain), false, $replaces);
 					} else {
-						// Create a SSL with www. because its a root domain
-						$le->signDomains(array($domain, 'www.'.$domain), false, $replaces);
+						// Root domain: dominio + www + los SAN EXTRA que el usuario haya elegido para su
+						// cert (subdominios propios, editados en la UI de Sencrypt -> vh_le_extra_sans).
+						// Anti-abuso: solo se aceptan nombres que sean subdominio del propio dominio. Con
+						// extras se emite por DNS-01 (los subdominios no sirven el reto HTTP-01).
+						$names = array($domain, 'www.'.$domain);
+						$suf = '.' . strtolower($domain);
+						foreach (array_filter(array_map('trim', explode(',', strtolower((string)($sslVhost['vh_le_extra_sans'] ?? ''))))) as $s) {
+							if ($s === '' || in_array($s, $names, true)) { continue; }
+							if (substr($s, -strlen($suf)) === $suf) { $names[] = $s; }
+						}
+						if (count($names) > 2) {
+							require_once 'modules/sencrypt/code/controller.ext.php';
+							echo "   SAN extra del usuario (DNS-01): ".implode(', ', array_slice($names, 2)).fs_filehandler::NewLine();
+							$le->signDomains($names, false, $replaces, 'dns-01',
+								array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
+						} else {
+							$le->signDomains($names, false, $replaces);
+						}
 					}
 						$issuedThisRun++;
 

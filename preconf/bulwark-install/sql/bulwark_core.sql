@@ -763,6 +763,7 @@ CREATE TABLE `x_vhosts` (
   `vh_obasedir_in` int(1) DEFAULT 1,
   `vh_ssl_tx` text DEFAULT NULL,
   `vh_ssl_port_in` int(6) DEFAULT NULL,
+  `vh_le_extra_sans` text DEFAULT NULL COMMENT 'SAN extra (subdominios propios) del cert LE del dominio, editable por el usuario',
   `vh_forcessl_in` tinyint(1) NOT NULL DEFAULT 1,
   `vh_custom_tx` text DEFAULT NULL,
   `vh_custom_port_in` int(6) DEFAULT NULL,

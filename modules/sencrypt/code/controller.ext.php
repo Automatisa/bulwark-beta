@@ -601,6 +601,57 @@ class module_controller extends ctrl_module {
 		if (!headers_sent()) { header('location: ./?module=sencrypt'); exit; }
 	}
 
+	# ===== Editor por-dominio de los SAN extra del cert LE del usuario ==========================
+	# Cada usuario elige subdominios PROPIOS a incluir en el cert de su dominio (p.ej. shop.dominio).
+
+	static function VhostSansEditor($rowdomains) {
+		// Subdominios (type 2): su cert es solo el subdominio; sin editor.
+		if ((int)($rowdomains['vh_type_in'] ?? 0) === 2) { return ''; }
+		// Wildcard: *.dominio ya cubre todos los subdominios.
+		if ((int)($rowdomains['vh_le_wildcard_in'] ?? 0) === 1) {
+			return '<small>' . ui_language::translate('Covered by wildcard') . ' *.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '</small>';
+		}
+		$val = htmlspecialchars((string)($rowdomains['vh_le_extra_sans'] ?? ''), ENT_QUOTES, 'UTF-8');
+		$ph  = 'shop.' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8');
+		return '<form action="./?module=sencrypt&action=SaveVhostSans" method="post" style="display:inline">'
+			. runtime_csfr::Token()
+			. '<input type="hidden" name="inDomain" value="' . htmlspecialchars($rowdomains['vh_name_vc'], ENT_QUOTES, 'UTF-8') . '">'
+			. '<input type="text" name="inSans" value="' . $val . '" placeholder="' . $ph . '" class="sencrypt-sans-row">'
+			. '<button class="button-loader btn btn-secondary" type="submit" name="inSaveSans" value="1"><i class="bi bi-tags me-1"></i>' . ui_language::translate('Extra names') . '</button>'
+			. '</form>';
+	}
+
+	# Guarda los SAN extra del PROPIO dominio del usuario (anti-IDOR: filtra por vh_acc_fk; solo
+	# subdominios del propio dominio). El hook los añade por DNS-01 en la próxima emisión.
+	static function doSaveVhostSans() {
+		global $zdbh, $controller;
+		runtime_csfr::Protect();
+		$cu     = ctrl_users::GetUserDetail();
+		$domain = strtolower((string)$controller->GetControllerRequest('FORM', 'inDomain'));
+		$q = $zdbh->prepare("SELECT vh_id_pk FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in<>2");
+		$q->execute(array(':d' => $domain, ':u' => (int)$cu['userid']));
+		$vid = $q->fetchColumn();
+		if (!$vid) {
+			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('Domain not valid.'));
+		} else {
+			$raw = (string)$controller->GetControllerRequest('FORM', 'inSans');
+			$suf = '.' . $domain;
+			$out = array();
+			foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
+				$h = trim($h, ". \t\r\n");
+				if ($h === '' || in_array($h, $out, true)) { continue; }
+				$isFqdn = preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h);
+				if ($isFqdn && substr($h, -strlen($suf)) === $suf) { $out[] = $h; }
+			}
+			$val = implode(',', $out);
+			$zdbh->prepare("UPDATE x_vhosts SET vh_le_extra_sans=:v WHERE vh_id_pk=:id")
+			     ->execute(array(':v' => ($val === '' ? null : $val), ':id' => (int)$vid));
+			$_SESSION['sencrypt_flash'] = array('ok',
+				ui_language::translate('Extra certificate names saved') . ': ' . ($val === '' ? '—' : htmlspecialchars($val, ENT_QUOTES, 'UTF-8')) . '. ' . ui_language::translate('Press Reissue to apply now, or they apply on renewal.'));
+		}
+		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
+	}
+
 	static function Show_list_of_active_domain_ssl() {
 		global $zdbh, $controller;
 	    $currentuser = ctrl_users::GetUserDetail();
@@ -652,7 +703,7 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ".";
 					}
 							
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL );
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL );
 					
 				# If Letsencrypt cert	
 				} elseif ( is_file(ctrl_options::GetSystemOption('hosted_dir') . $currentuser["username"] . "/ssl/sencrypt/letsencrypt/" . $rowdomains['vh_name_vc'] . "/cert.pem" ) ) {
@@ -685,18 +736,18 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ' - ' . ui_language::translate("Auto-renewal in") . ' ' . $reNewDay . ' ' . ui_language::translate("days") . '.';
 					}
 					
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains));
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains), 'Sans_AC' => self::VhostSansEditor($rowdomains));
 					
 				}
 			}
 			if (!$res)
 			{
-				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL);
+				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
 			}
 
 		} else {		
 								
-			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL);
+			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
 			
 		}
 		
