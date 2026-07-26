@@ -22,9 +22,7 @@ PANEL_DATA="/var/bulwark"
 PANEL_CONF="/usr/local/etc/bulwark"
 VMAIL_UID=2000
 VMAIL_GID=2000
-# Repo de origen del panel (BETA). Sobreescribible por entorno:
-#   GIT_REPO=https://github.com/OTRO/OTRO_REPO.git sh install_bulwark.sh
-GIT_REPO="${GIT_REPO:-https://github.com/Automatisa/bulwark-beta.git}"
+GIT_REPO="https://github.com/Automatisa/new_se.git"
 
 ###############################################################################
 # COLORES
@@ -1554,6 +1552,19 @@ if [ -f "$SSL_CONF" ]; then
     else
         echo "SSLOpenSSLConfCmd SignatureAlgorithms ${SIGALGS}" >> "$SSL_CONF"
     fi
+fi
+
+# Algoritmos de firma del key exchange (TLS 1.2) a nivel de OpenSSL del SISTEMA.
+# Postfix y Dovecot enlazan la libssl BASE (/usr/lib/libssl) -> leen /etc/ssl/openssl.cnf, NO el
+# httpd-ssl.conf de Apache. Sin esto, OpenSSL ofrece SHA-1/SHA-224 por defecto e internet.nl marca
+# el MX como inseguro ("Hash function for key exchange"). 'system_default' aplica a todos los SSL_CTX
+# (entrante y saliente). Idempotente; cubre Postfix, Dovecot y el openssl del sistema de una vez.
+OSSL_SIGALGS="ECDSA+SHA256:ECDSA+SHA384:ECDSA+SHA512:RSA-PSS+SHA256:RSA-PSS+SHA384:RSA-PSS+SHA512:RSA+SHA256:RSA+SHA384:RSA+SHA512:ed25519:ed448"
+OSSL_CNF="/etc/ssl/openssl.cnf"
+if [ -f "$OSSL_CNF" ] && ! grep -q "system_default_sect" "$OSSL_CNF"; then
+    grep -qE "^[[:space:]]*ssl_conf[[:space:]]*=" "$OSSL_CNF" || \
+        { awk '/^\[openssl_init\]/{print; print "ssl_conf = ssl_sect"; next} {print}' "$OSSL_CNF" > "$OSSL_CNF.tmp" && mv "$OSSL_CNF.tmp" "$OSSL_CNF"; }
+    printf '\n[ssl_sect]\nsystem_default = system_default_sect\n\n[system_default_sect]\nSignatureAlgorithms = %s\n' "$OSSL_SIGALGS" >> "$OSSL_CNF"
 fi
 
 # Include de Bulwark (si no existe ya)
