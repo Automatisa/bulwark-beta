@@ -275,6 +275,65 @@ class module_controller extends ctrl_module
         self::$ok = true;
     }
 
+    // -----------------------------------------------------------------------
+    // Panel certificate — nombres de servicio (SANs)
+    // -----------------------------------------------------------------------
+
+    // Nombres SIEMPRE incluidos por rol (solo lectura): FQDN del panel + vhosts cableados al cert
+    // del panel (p.ej. mta-sts). No se editan aquí; se añaden solos.
+    static function getPanelSansAuto()
+    {
+        global $zdbh;
+        $domain = strtolower((string)ctrl_options::GetSystemOption('bulwark_domain'));
+        $names  = array($domain);
+        $w = $zdbh->prepare("SELECT DISTINCT LOWER(vh_name_vc) FROM x_vhosts WHERE vh_deleted_ts IS NULL AND vh_ssl_tx LIKE ?");
+        $w->execute(array('%/' . $domain . '/%'));
+        foreach ($w->fetchAll(PDO::FETCH_COLUMN) as $vn) { if ($vn !== '' && !in_array($vn, $names, true)) { $names[] = $vn; } }
+        return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
+    }
+
+    // Valor actual de la lista editable (para el <input>).
+    static function getPanelSansValue()
+    {
+        return htmlspecialchars((string)ctrl_options::GetSystemOption('panel_le_extra_sans'), ENT_QUOTES, 'UTF-8');
+    }
+
+    // Nombres reales que cubre el certificado del panel AHORA (leídos del propio cert).
+    static function getPanelCertNames()
+    {
+        $domain = (string)ctrl_options::GetSystemOption('bulwark_domain');
+        $cert = rtrim((string)ctrl_options::GetSystemOption('hosted_dir'), '/') . '/zadmin/ssl/sencrypt/letsencrypt/' . $domain . '/cert.pem';
+        if (!is_file($cert)) { return ui_language::translate('No certificate issued yet.'); }
+        $info = @openssl_x509_parse((string)@file_get_contents($cert));
+        if (!is_array($info) || empty($info['extensions']['subjectAltName'])) { return htmlspecialchars($domain, ENT_QUOTES, 'UTF-8'); }
+        $sans = array();
+        foreach (explode(',', $info['extensions']['subjectAltName']) as $s) {
+            $s = trim(preg_replace('/^DNS:/i', '', trim($s)));
+            if ($s !== '' && !in_array($s, $sans, true)) { $sans[] = $s; }
+        }
+        return htmlspecialchars(implode(', ', $sans), ENT_QUOTES, 'UTF-8');
+    }
+
+    // Guarda la lista editable de SANs de servicio del cert del panel (sanea a hostnames FQDN
+    // válidos; el hook de emisión descarta luego los que no caen bajo una zona gestionada).
+    static function doUpdatePanelSans()
+    {
+        global $zdbh, $controller;
+        runtime_csfr::Protect();
+        $raw = (string)$controller->GetControllerRequest('FORM', 'inPanelSans');
+        $out = array();
+        foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
+            $h = trim($h, ". \t\r\n");
+            if ($h === '') { continue; }
+            if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h) && !in_array($h, $out, true)) {
+                $out[] = $h;
+            }
+        }
+        $val = implode(',', $out);
+        $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
+        self::$ok = true;
+    }
+
     static function getResult()
     {
         if (!fs_director::CheckForEmptyValue(self::$ok)) {

@@ -92,6 +92,33 @@
             No hay dominios raíz creados en el panel todavía. Añade un dominio primero desde el módulo <strong>Domains</strong>.
         </div>
         <% endif %>
+
+        <hr>
+        <h3>Certificado del panel</h3>
+        <p class="text-muted" style="font-size:12px;">
+            Nombres (SAN) que presenta el certificado del panel para que el correo y los servicios
+            (mail, ftp, mta-sts…) se validen con un certificado correcto.
+        </p>
+        <table class="table table-striped" style="max-width:720px;">
+            <tr valign="top">
+                <th nowrap="nowrap" width="220px">Cubre ahora mismo:</th>
+                <td><@ PanelCertNames @></td>
+            </tr>
+            <tr valign="top">
+                <th nowrap="nowrap">Se incluyen solos:</th>
+                <td><@ PanelSansAuto @></td>
+            </tr>
+        </table>
+        <form action="./?module=bulwarkconfig&action=UpdatePanelSans" method="post" style="max-width:560px;">
+            <@ CSFR_Tag @>
+            <label>Nombres de servicio adicionales <span class="text-muted">(separados por comas)</span></label>
+            <input type="text" name="inPanelSans" class="form-control" placeholder="mail.tudominio, ftp.tudominio" value="<@ PanelSansValue @>">
+            <p class="text-muted" style="font-size:12px;margin-top:6px;">
+                Solo se incluyen los que caen bajo una zona que gestiona el panel (validación DNS-01).
+                Se aplican en la próxima renovación del certificado.
+            </p>
+            <button type="submit" class="btn btn-primary"><span class="bi bi-floppy me-1"></span> Guardar nombres del certificado</button>
+        </form>
     </div>
 
     <div class="zgrid_wrapper">
