@@ -1485,21 +1485,24 @@ cat > /usr/local/etc/sshguard.conf << SGCF
 BACKEND="/usr/local/libexec/sshg-fw-pf"
 
 THRESHOLD=40
-BLOCK_TIME=120
+BLOCK_TIME=1800
 DETECTION_TIME=1800
 WHITELIST_FILE=/usr/local/etc/sshguard.whitelist
 SGCF
 
-# Whitelist mínima: localhost nunca se bloquea
+# Whitelist mínima: localhost y la IP del servidor nunca se bloquean
 cat > /usr/local/etc/sshguard.whitelist << 'SGWL'
 127.0.0.1
 ::1
 SGWL
+[ -n "$SERVER_IP" ] && ! grep -qxF "$SERVER_IP" /usr/local/etc/sshguard.whitelist && echo "$SERVER_IP" >> /usr/local/etc/sshguard.whitelist
 
 # SSHGuard se ejecuta como SERVICIO (no como pipe de syslog): así el panel (fw_admin) puede
-# ver su estado y activarlo/desactivarlo con `service sshguard ...`. Lee el auth log con
-# sshguard_watch_logs. (El método pipe de syslog es incompatible con el status/toggle del panel.)
-sysrc sshguard_watch_logs="/var/log/auth.log"
+# ver su estado y activarlo/desactivarlo con `service sshguard ...`. Vigila el auth log (SSH) Y el
+# maillog (fuerza bruta a SMTP AUTH de Postfix/Dovecot — sshguard trae esas firmas de fábrica).
+# GOTCHA: sshguard_watch_logs se separa por DOS PUNTOS ':' (el rc hace `tr : '\n' | sed 's/^/-l /'`);
+# con espacios genera un solo '-l' malformado y sshguard no escribe el pidfile (status roto).
+sysrc sshguard_watch_logs="/var/log/auth.log:/var/log/maillog"
 
 sysrc pf_enable="YES"
 sysrc pf_rules="/etc/pf.conf"
