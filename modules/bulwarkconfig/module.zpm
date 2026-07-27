@@ -111,11 +111,19 @@
         </table>
         <form action="./?module=bulwarkconfig&action=UpdatePanelSans" method="post" style="max-width:560px;">
             <@ CSFR_Tag @>
-            <label>Nombres de servicio adicionales <span class="text-muted">(separados por comas)</span></label>
-            <input type="text" name="inPanelSans" class="form-control" placeholder="mail.tudominio, ftp.tudominio" value="<@ PanelSansValue @>">
+            <label>Nombres de servicio a incluir <span class="text-muted">(marca los que quieras)</span></label>
+            <table class="table table-striped">
+                <tr><th width="70px">Incluir</th><th>Nombre</th></tr>
+                <% loop PanelSans_List %>
+                <tr>
+                    <td>{! Psan_Checkbox !}</td>
+                    <td><& Psan_Fqdn &></td>
+                </tr>
+                <% endloop %>
+            </table>
             <p class="text-muted" style="font-size:12px;margin-top:6px;">
-                Solo se incluyen los que caen bajo una zona que gestiona el panel (validación DNS-01).
-                Se aplican en la próxima renovación del certificado.
+                Solo se listan los nombres de servicio que existen en el DNS y apuntan a este servidor.
+                Si quitas uno del DNS deja de ofrecerse. Se aplican en la próxima renovación del certificado.
             </p>
             <button type="submit" class="btn btn-primary"><span class="bi bi-floppy me-1"></span> Guardar nombres del certificado</button>
         </form>

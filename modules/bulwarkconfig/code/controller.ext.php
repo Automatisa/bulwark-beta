@@ -292,10 +292,63 @@ class module_controller extends ctrl_module
         return htmlspecialchars(implode(', ', $names), ENT_QUOTES, 'UTF-8');
     }
 
-    // Valor actual de la lista editable (para el <input>).
-    static function getPanelSansValue()
+    // Nombres de SERVICIO candidatos para el cert del panel: registros A/AAAA de la zona del dominio
+    // proveedor que apuntan a ESTE servidor y NO son infraestructura ni tienen su propio cert. Es lo
+    // que se ofrece para MARCAR (nada de escribir a mano). Excluye: nameservers (ns\d + targets NS),
+    // www, el FQDN del panel, y los que ya son un vhost (apex/subdominios con su cert, y mta-sts que
+    // ya se incluye solo por rol). Devuelve array de FQDN.
+    static function getEligiblePanelSans()
     {
-        return htmlspecialchars((string)ctrl_options::GetSystemOption('panel_le_extra_sans'), ENT_QUOTES, 'UTF-8');
+        global $zdbh;
+        $prov = strtolower((string)ctrl_options::GetSystemOption('dns_provider_domain'));
+        if ($prov === '') { return array(); }
+        $panelFqdn = strtolower((string)ctrl_options::GetSystemOption('bulwark_domain'));
+        $ips = array_values(array_filter(array(
+            (string)ctrl_options::GetSystemOption('server_ip'),
+            (string)ctrl_options::GetSystemOption('server_ip6'))));
+        if (empty($ips)) { return array(); }
+        $ph = implode(',', array_fill(0, count($ips), '?'));
+        $q = $zdbh->prepare(
+            "SELECT DISTINCT LOWER(d.dn_host_vc) FROM x_dns d
+               JOIN x_vhosts v ON v.vh_id_pk = d.dn_vhost_fk
+              WHERE v.vh_name_vc = ? AND v.vh_type_in = 1 AND v.vh_deleted_ts IS NULL
+                AND d.dn_deleted_ts IS NULL AND d.dn_type_vc IN ('A','AAAA')
+                AND d.dn_target_vc IN ($ph)");
+        $q->execute(array_merge(array($prov), $ips));
+        $exclude = array($panelFqdn => true);
+        $nsq = $zdbh->prepare("SELECT DISTINCT LOWER(TRIM(TRAILING '.' FROM d.dn_target_vc)) FROM x_dns d JOIN x_vhosts v ON v.vh_id_pk=d.dn_vhost_fk WHERE v.vh_name_vc=:d AND v.vh_deleted_ts IS NULL AND d.dn_type_vc='NS' AND d.dn_deleted_ts IS NULL");
+        $nsq->execute(array(':d' => $prov));
+        foreach ($nsq->fetchAll(PDO::FETCH_COLUMN) as $ns) { if ($ns !== '') { $exclude[$ns] = true; } }
+        $isVhost = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=? AND vh_deleted_ts IS NULL AND vh_type_in IN (1,2)");
+        $out = array();
+        foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $label) {
+            $label = trim(strtolower((string)$label));
+            if ($label === '' || $label === 'www' || strpos($label, '*') !== false || preg_match('/^ns[0-9]/', $label)) { continue; }
+            $fqdn = ($label === '@') ? $prov : $label . '.' . $prov;
+            if (isset($exclude[$fqdn])) { continue; }
+            $isVhost->execute(array($fqdn));
+            if ((int)$isVhost->fetchColumn() > 0) { continue; } // ya tiene su propio cert / va por rol
+            if (!in_array($fqdn, $out, true)) { $out[] = $fqdn; }
+        }
+        sort($out);
+        return $out;
+    }
+
+    // Filas de la tabla-selector: candidatos + estado (marcado si ya está en el cert del panel).
+    static function getPanelSans_List()
+    {
+        $elig = self::getEligiblePanelSans();
+        $sel  = array_filter(array_map('trim', explode(',', strtolower((string)ctrl_options::GetSystemOption('panel_le_extra_sans')))));
+        if (empty($elig)) {
+            return array(array('Psan_Fqdn' => ui_language::translate('No hay nombres de servicio en el DNS apuntando a este servidor. Crea el registro (p.ej. mail o ftp) en el DNS Manager y aparecerá aquí.'), 'Psan_Checkbox' => NULL));
+        }
+        $res = array();
+        foreach ($elig as $fqdn) {
+            $h = htmlspecialchars($fqdn, ENT_QUOTES, 'UTF-8');
+            $chk = in_array($fqdn, $sel, true) ? ' checked' : '';
+            $res[] = array('Psan_Fqdn' => $fqdn, 'Psan_Checkbox' => '<input type="checkbox" name="inPanelSans[]" value="' . $h . '"' . $chk . '>');
+        }
+        return $res;
     }
 
     // Nombres reales que cubre el certificado del panel AHORA (leídos del propio cert).
@@ -314,21 +367,20 @@ class module_controller extends ctrl_module
         return htmlspecialchars(implode(', ', $sans), ENT_QUOTES, 'UTF-8');
     }
 
-    // Guarda la lista editable de SANs de servicio del cert del panel (sanea a hostnames FQDN
-    // válidos; el hook de emisión descarta luego los que no caen bajo una zona gestionada).
+    // Guarda la SELECCIÓN de nombres del cert del panel (checkboxes). Anti-tamper: solo se aceptan
+    // los que están en la lista de elegibles real (no se confía en el POST).
     static function doUpdatePanelSans()
     {
-        global $zdbh, $controller;
+        global $zdbh;
         runtime_csfr::Protect();
-        $raw = (string)$controller->GetControllerRequest('FORM', 'inPanelSans');
+        $elig = self::getEligiblePanelSans();
+        $posted = (isset($_POST['inPanelSans']) && is_array($_POST['inPanelSans'])) ? $_POST['inPanelSans'] : array();
         $out = array();
-        foreach (preg_split('/[\s,]+/', strtolower($raw)) as $h) {
-            $h = trim($h, ". \t\r\n");
-            if ($h === '') { continue; }
-            if (preg_match('/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/', $h) && !in_array($h, $out, true)) {
-                $out[] = $h;
-            }
+        foreach ($posted as $p) {
+            $p = strtolower(trim((string)$p));
+            if (in_array($p, $elig, true) && !in_array($p, $out, true)) { $out[] = $p; }
         }
+        sort($out);
         $val = implode(',', $out);
         $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='panel_le_extra_sans'")->execute(array(':v' => $val));
         self::$ok = true;
