@@ -20,6 +20,21 @@ function CreateDefaultDNSForNewDomains() {
     $ns1cfg = ctrl_options::GetSystemOption('dns_ns1');
     $ns2cfg = ctrl_options::GetSystemOption('dns_ns2');
 
+    // Host de correo COMPARTIDO para el MX de todos los dominios: el MX real del dominio proveedor
+    // (p.ej. mail.tudominio), que es el nombre que cubre el certificado del panel. Así el MX de cada
+    // cliente COINCIDE con el cert -> X509/DANE/MTA-STS válidos (antes se ponía mail.<dominio>, que
+    // NO estaba en el cert -> name mismatch). Fallback: mail.<proveedor> o, sin proveedor, mail.<dominio>.
+    $provider = ctrl_options::GetSystemOption('dns_provider_domain');
+    $sharedMailHost = '';
+    if (!fs_director::CheckForEmptyValue($provider)) {
+        $mxq = $zdbh->prepare("SELECT d.dn_target_vc FROM x_dns d JOIN x_vhosts v ON v.vh_id_pk=d.dn_vhost_fk
+                               WHERE v.vh_name_vc=:p AND v.vh_type_in=1 AND v.vh_deleted_ts IS NULL
+                                 AND d.dn_type_vc='MX' AND d.dn_deleted_ts IS NULL ORDER BY d.dn_priority_in ASC LIMIT 1");
+        $mxq->execute([':p' => $provider]);
+        $sharedMailHost = rtrim((string)$mxq->fetchColumn(), '.');
+        if ($sharedMailHost === '') { $sharedMailHost = 'mail.' . $provider; }
+    }
+
     // Dominios principales activos/pendientes sin ningún registro DNS
     $sql = $zdbh->prepare("
         SELECT v.vh_id_pk, v.vh_acc_fk, v.vh_name_vc
@@ -35,6 +50,8 @@ function CreateDefaultDNSForNewDomains() {
     $domains = $sql->fetchAll();
 
     if (!$domains) { return; }
+
+    $createdIds = array(); // IDs de vhost para dns_hasupdates (formato correcto: lista de IDs, no 'true')
 
     foreach ($domains as $dom) {
         $userID     = $dom['vh_acc_fk'];
@@ -57,10 +74,12 @@ function CreateDefaultDNSForNewDomains() {
             (dn_acc_fk, dn_name_vc, dn_vhost_fk, dn_type_vc, dn_host_vc, dn_ttl_in, dn_target_vc, dn_priority_in, dn_weight_in, dn_port_in, dn_created_ts)
             VALUES (:uid, :name, :vid, :type, :host, :ttl, :target, :prio, :weight, :port, :ts)");
 
+        $mailHost = ($sharedMailHost !== '') ? $sharedMailHost : ('mail.' . $domainName);
+
         foreach ($rows as $r) {
             $target = str_replace(
-                [':IP:', ':DOMAIN:', ':NS1:', ':NS2:'],
-                [$targetIP, $domainName, $ns1, $ns2],
+                [':IP:', ':DOMAIN:', ':NS1:', ':NS2:', ':MAILHOST:'],
+                [$targetIP, $domainName, $ns1, $ns2, $mailHost],
                 (string)$r['dc_target_vc']
             );
             $ins->execute([
@@ -85,9 +104,17 @@ function CreateDefaultDNSForNewDomains() {
             ':target' => 'PENDING', ':prio' => null, ':weight' => null, ':port' => null, ':ts' => time(),
         ]);
 
+        $createdIds[] = (string)$domainID;
         echo "DNS: zona por defecto creada para {$domainName} (NS {$ns1}/{$ns2})" . fs_filehandler::NewLine();
     }
 
-    // Pedir al daemon que escriba las zonas/named.conf en su próximo ciclo
-    $zdbh->exec("UPDATE x_settings SET so_value_tx='true' WHERE so_name_vc='dns_hasupdates'");
+    // Pedir al daemon que escriba las zonas/named.conf. dns_hasupdates es una LISTA de IDs de vhost
+    // (no 'true'): WriteDNSZoneRecordsHook hace explode(',') y regenera SOLO esas zonas. Con 'true'
+    // no regeneraba ninguna (id 'true' no existe) -> la zona del dominio nuevo no se escribía.
+    if (!empty($createdIds)) {
+        $prev = array_filter(array_map('trim', explode(',', (string)ctrl_options::GetSystemOption('dns_hasupdates'))));
+        $merged = array_values(array_unique(array_merge($prev, $createdIds)));
+        $zdbh->prepare("UPDATE x_settings SET so_value_tx=:v WHERE so_name_vc='dns_hasupdates'")
+             ->execute([':v' => implode(',', $merged)]);
+    }
 }

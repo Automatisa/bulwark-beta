@@ -1142,6 +1142,18 @@ class module_controller extends ctrl_module
             //no entry specific to this user is present, use default entries (user number = 0)
             $CreateList = $zdbh->query('SELECT * FROM x_dns_create WHERE dc_acc_fk=0');
         }
+        // Host de correo COMPARTIDO para el MX (:MAILHOST:): el MX real del dominio proveedor, que es
+        // el nombre cubierto por el certificado del panel. Así el MX del cliente coincide con el cert.
+        $provider = ctrl_options::GetSystemOption('dns_provider_domain');
+        $sharedMailHost = '';
+        if (!fs_director::CheckForEmptyValue($provider)) {
+            $mxq = $zdbh->prepare("SELECT d.dn_target_vc FROM x_dns d JOIN x_vhosts v ON v.vh_id_pk=d.dn_vhost_fk
+                                   WHERE v.vh_name_vc=:p AND v.vh_type_in=1 AND v.vh_deleted_ts IS NULL
+                                     AND d.dn_type_vc='MX' AND d.dn_deleted_ts IS NULL ORDER BY d.dn_priority_in ASC LIMIT 1");
+            $mxq->execute([':p' => $provider]);
+            $sharedMailHost = rtrim((string)$mxq->fetchColumn(), '.');
+            if ($sharedMailHost === '') { $sharedMailHost = 'mail.' . $provider; }
+        }
         while ($CreateItem = $CreateList->fetch()) {
             $Target = str_replace(':IP:', $targetIP, $CreateItem['dc_target_vc']);
             $Target = str_replace(':DOMAIN:', $domainName, $Target);
@@ -1153,6 +1165,7 @@ class module_controller extends ctrl_module
             if (fs_director::CheckForEmptyValue($ns2)) { $ns2 = 'ns2.' . $domainName; }
             $Target = str_replace(':NS1:', $ns1, $Target);
             $Target = str_replace(':NS2:', $ns2, $Target);
+            $Target = str_replace(':MAILHOST:', ($sharedMailHost !== '' ? $sharedMailHost : ('mail.' . $domainName)), $Target);
 
             $Row = array(
                 'uid' => $userID,

@@ -190,14 +190,16 @@ CREATE TABLE `x_dns_create` (
 ) ENGINE=InnoDB AUTO_INCREMENT=15 DEFAULT CHARSET=utf8mb3 COLLATE=utf8mb3_general_ci;
 -- Plantilla por defecto de una zona nueva (dc_acc_fk=0). doCreateDefaultRecords()
 -- reemplaza :IP: (server_ip), :DOMAIN: (nombre del dominio), :NS1:/:NS2: (nameservers
--- compartidos del panel). El registro DKIM (default._domainkey) lo añade el código.
+-- compartidos del panel) y :MAILHOST: (host de correo COMPARTIDO = MX del dominio proveedor,
+-- p.ej. mail.tudominio; es el que cubre el certificado del panel, así el MX de cada cliente
+-- coincide con el cert -> X509/DANE/MTA-STS válidos). El DKIM (default._domainkey) lo añade el código.
 INSERT INTO `x_dns_create` (`dc_id_pk`, `dc_acc_fk`, `dc_type_vc`, `dc_host_vc`, `dc_ttl_in`, `dc_target_vc`, `dc_priority_in`, `dc_weight_in`, `dc_port_in`) VALUES
 ('1', '0', 'NS',    '@',       172800, ':NS1:', NULL, NULL, NULL),
 ('2', '0', 'NS',    '@',       172800, ':NS2:', NULL, NULL, NULL),
 ('3', '0', 'A',     '@',       3600,   ':IP:', NULL, NULL, NULL),
 ('4', '0', 'A',     'www',     3600,   ':IP:', NULL, NULL, NULL),
 ('5', '0', 'A',     'mail',    3600,   ':IP:', NULL, NULL, NULL),
-('6', '0', 'MX',    '@',       3600,   'mail.:DOMAIN:', 10, NULL, NULL),
+('6', '0', 'MX',    '@',       3600,   ':MAILHOST:', 10, NULL, NULL),
 ('7', '0', 'TXT',   '@',       3600,   'v=spf1 a mx ip4::IP: ~all', NULL, NULL, NULL),
 ('8', '0', 'TXT',   '_dmarc',  3600,   'v=DMARC1; p=none; rua=mailto:postmaster@:DOMAIN:; fo=1', NULL, NULL, NULL),
 ('9', '0', 'CAA',   '@',       3600,   '0 issue "letsencrypt.org"', NULL, NULL, NULL),
