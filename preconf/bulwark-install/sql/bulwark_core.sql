@@ -201,7 +201,7 @@ INSERT INTO `x_dns_create` (`dc_id_pk`, `dc_acc_fk`, `dc_type_vc`, `dc_host_vc`,
 ('5', '0', 'A',     'mail',    3600,   ':IP:', NULL, NULL, NULL),
 ('6', '0', 'MX',    '@',       3600,   ':MAILHOST:', 10, NULL, NULL),
 ('7', '0', 'TXT',   '@',       3600,   'v=spf1 a mx ip4::IP: ~all', NULL, NULL, NULL),
-('8', '0', 'TXT',   '_dmarc',  3600,   'v=DMARC1; p=none; rua=mailto:postmaster@:DOMAIN:; fo=1', NULL, NULL, NULL),
+('8', '0', 'TXT',   '_dmarc',  3600,   'v=DMARC1; p=quarantine; rua=mailto:postmaster@:DOMAIN:; fo=1', NULL, NULL, NULL),
 ('9', '0', 'CAA',   '@',       3600,   '0 issue "letsencrypt.org"', NULL, NULL, NULL),
 ('10','0', 'CAA',   '@',       3600,   '0 issuewild "letsencrypt.org"', NULL, NULL, NULL);
 
