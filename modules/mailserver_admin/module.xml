@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<module>
+    <name>Mail Server</name>
+    <version>100</version>
+    <defaultcat>Mail</defaultcat>
+    <desc>Ver el estado del servidor de correo: cola, log reciente, contadores y direcciones bloqueadas.</desc>
+    <authorname>Bulwark / Automatisa</authorname>
+    <authoremail>info@automatisa</authoremail>
+    <authorurl>https://github.com/Automatisa</authorurl>
+</module>

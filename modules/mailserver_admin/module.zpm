@@ -1,0 +1,66 @@
+<@ Init @>
+
+<div class="zmodule_content panel" id="zmodule_header_<@ ModuleName @>">
+    <div class="card-header">
+        <img src="<@ ModuleIcon @>" width="35" height="35" border="0" alt="<@ ModuleName @>">
+        <div class="zmodule_title"><@ ModuleName @></div>
+        <div class="zmodule_desc" id="zmodule_desc_<@ ModuleName @>"><@ ModuleDesc @></div>
+    </div>
+
+    <div class="ms-cards">
+        <div class="ms-card ok"><div class="ms-num"><@ StatSent @></div><div class="ms-lbl"><: Sent :></div></div>
+        <div class="ms-card warn"><div class="ms-num"><@ StatDeferred @></div><div class="ms-lbl"><: Deferred :></div></div>
+        <div class="ms-card bad"><div class="ms-num"><@ StatBounced @></div><div class="ms-lbl"><: Bounced :></div></div>
+        <div class="ms-card bad"><div class="ms-num"><@ StatRejected @></div><div class="ms-lbl"><: Rejected :></div></div>
+        <div class="ms-card"><div class="ms-num"><@ StatSaslFailed @></div><div class="ms-lbl"><: Failed SMTP logins :></div></div>
+        <div class="ms-card accent"><div class="ms-num"><@ QueueCount @></div><div class="ms-lbl"><: In queue :></div></div>
+    </div>
+    <p class="ms-muted ms-gen"><: Snapshot :>: <@ GeneratedTime @> &nbsp;·&nbsp; <: counters from the current mail log :></p>
+
+    <div class="zgrid_wrapper">
+        <h3><: Mail queue :> (<@ QueueCount @>)</h3>
+        <div class="table-responsive">
+            <table class="table">
+                <tr>
+                    <th><: Queue ID :></th>
+                    <th><: Type :></th>
+                    <th><: Arrived :></th>
+                    <th><: Sender :></th>
+                    <th><: Recipients :></th>
+                    <th><: Size :></th>
+                    <th><: Last error :></th>
+                </tr>
+                <% loop Mail_Queue %>
+                <tr>
+                    <td class="ms-mono"><& Q_Id &></td>
+                    <td><& Q_Queue &></td>
+                    <td class="ms-mono"><& Q_Time &></td>
+                    <td><& Q_Sender &></td>
+                    <td><& Q_Recipients &></td>
+                    <td class="ms-mono"><& Q_Size &></td>
+                    <td class="ms-muted"><& Q_Reason &></td>
+                </tr>
+                <% endloop %>
+            </table>
+        </div>
+    </div>
+
+    <div class="zgrid_wrapper">
+        <h3><: Blocked addresses :> (<@ BannedCount @>)</h3>
+        <p class="ms-muted"><: IPs auto-banned by SSHGuard (SSH + SMTP brute-force) and manual firewall blocks. Manage them in the Firewall module. :></p>
+        <div class="table-responsive">
+            <table class="table" style="max-width:520px;">
+                <tr><th><: IP address :></th><th><: Source :></th></tr>
+                <% loop Banned_IPs %>
+                <tr><td class="ms-mono"><& B_Ip &></td><td><& B_Source &></td></tr>
+                <% endloop %>
+            </table>
+        </div>
+    </div>
+
+    <div class="zgrid_wrapper">
+        <h3><: Recent mail log :></h3>
+        <div class="ms-log"><@ MailLogHtml @></div>
+    </div>
+
+</div>

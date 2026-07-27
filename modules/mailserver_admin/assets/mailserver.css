@@ -1,0 +1,26 @@
+/* Mail Server (mailserver_admin) — vista de estado del correo */
+.ms-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0 8px; }
+.ms-card {
+    flex: 1 1 130px; min-width: 120px; background: #f5f6f8; border: 1px solid #e2e5ea;
+    border-radius: 8px; padding: 12px 14px; text-align: center;
+}
+.ms-card .ms-num { font-size: 26px; font-weight: 700; line-height: 1.1; color: #2c3e50; }
+.ms-card .ms-lbl { font-size: 12px; color: #6b7480; margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.ms-card.ok     { border-color: #bfe3cd; } .ms-card.ok   .ms-num { color: #2f8f5b; }
+.ms-card.warn   { border-color: #ecd9b0; } .ms-card.warn .ms-num { color: #9a6510; }
+.ms-card.bad    { border-color: #edc4bf; } .ms-card.bad  .ms-num { color: #b0433a; }
+.ms-card.accent { border-color: #b9d3ea; } .ms-card.accent .ms-num { color: #1f6fb2; }
+
+.ms-muted { color: #8a929c; font-size: 12px; }
+.ms-gen { margin: 4px 0 18px; }
+.ms-mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+
+.ms-log {
+    background: #1b2027; color: #d7dde5; border-radius: 8px; padding: 12px 14px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px;
+    line-height: 1.55; max-height: 460px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+}
+.ms-logline { padding: 1px 0; }
+.ms-logline.ms-ok   { color: #7ed3a0; }
+.ms-logline.ms-warn { color: #e6c274; }
+.ms-logline.ms-bad  { color: #ef9a90; }

@@ -289,6 +289,14 @@ class privilege
             'doas_rule' => 'cmd /usr/local/bulwark/bin/fw_status_dump.sh',
         ),
 
+        // Vuelca estado del servidor de correo (cola + log + contadores) a
+        // /var/bulwark/logs/mail_status.json (www:www 640). SOLO LECTURA (módulo mailserver_admin).
+        'mail_status_dump' => array(
+            'argv'      => array('/usr/local/bulwark/bin/mail_status_dump.sh'),
+            'sudo_rule' => '/usr/local/bulwark/bin/mail_status_dump.sh',
+            'doas_rule' => 'cmd /usr/local/bulwark/bin/mail_status_dump.sh',
+        ),
+
         // Aplica reglas personalizadas de x_fw_rules al anchor pf "bulwark_rules".
         'fw_rules_apply' => array(
             'argv'      => array('/usr/local/bulwark/bin/fw_rules_apply.sh'),
