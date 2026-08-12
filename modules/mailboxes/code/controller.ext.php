@@ -37,6 +37,7 @@ class module_controller extends ctrl_module
     static $alreadyexists;
     static $validemail;
     static $noaddress;
+    static $badsize;
     static $editmailbox;
     static $update;
     static $delete;
@@ -69,6 +70,7 @@ class module_controller extends ctrl_module
                 }
                 $res[] = array('address' => $rowmailboxes['mb_address_vc'],
                     'created' => date(ctrl_options::GetSystemOption('bulwark_df'), $rowmailboxes['mb_created_ts']),
+                    'size' => self::FormatMailboxSize(self::GetMailboxSizeMb($rowmailboxes)),
                     'status' => $status,
                     'id' => $rowmailboxes['mb_id_pk']);
             }
@@ -101,6 +103,7 @@ class module_controller extends ctrl_module
                 }
                 $res[] = array('address' => $rowmailboxes['mb_address_vc'],
                     'created' => date(ctrl_options::GetSystemOption('bulwark_df'), $rowmailboxes['mb_created_ts']),
+                    'size' => self::GetMailboxSizeMb($rowmailboxes),
                     'ischeck' => $ischeck,
                     'id' => $rowmailboxes['mb_id_pk']);
             }
@@ -133,12 +136,17 @@ class module_controller extends ctrl_module
         }
     }
 
-    static function ExecuteAddMailbox($uid, $address, $domain, $password)
+    static function ExecuteAddMailbox($uid, $address, $domain, $password, $size_mb = null)
     {
         global $zdbh;
         global $controller;
         $currentuser = ctrl_users::GetUserDetail($uid);
         if (fs_director::CheckForEmptyValue(self::CheckCreateForErrors($address, $domain, $password))) {
+            return false;
+        }
+        // Tamaño del buzón (MB): por defecto max_mail_size; se descuenta de la cuota de disco del paquete.
+        $size_mb = self::ResolveMailboxSize($size_mb, $currentuser, 0);
+        if ($size_mb === false) {
             return false;
         }
         runtime_hook::Execute('OnBeforeCreateMailbox');
@@ -152,15 +160,18 @@ class module_controller extends ctrl_module
 
         $sql = "INSERT INTO x_mailboxes (mb_acc_fk,
 											 mb_address_vc,
+											 mb_quota_in,
 											 mb_created_ts) VALUES (
 											 :userid,
 											 :fulladdress,
+											 :size,
 											 :time)";
         $time = time();
         $sql = $zdbh->prepare($sql);
         $sql->bindParam(':time', $time);
         $sql->bindParam(':userid', $currentuser['userid']);
         $sql->bindParam(':fulladdress', $fulladdress);
+        $sql->bindParam(':size', $size_mb);
         $sql->execute();
         runtime_hook::Execute('OnAfterCreateMailbox');
         self::$ok = true;
@@ -201,7 +212,7 @@ class module_controller extends ctrl_module
         self::$ok = true;
     }
 
-    static function ExecuteUpdateMailbox($mid, $password, $enabled)
+    static function ExecuteUpdateMailbox($mid, $password, $enabled, $size_mb = null)
     {
         global $zdbh;
         global $controller;
@@ -216,6 +227,22 @@ class module_controller extends ctrl_module
         }
 		if (fs_director::CheckForEmptyValue(self::CheckPasswordForErrors($password))) {
 
+			// Cambio opcional de tamaño del buzón (MB), descontado de la cuota de disco del paquete.
+			$rowmailbox = null;
+			if ($size_mb !== null && trim((string)$size_mb) !== '') {
+				$numrows = $zdbh->prepare("SELECT * FROM x_mailboxes WHERE mb_id_pk=:mid");
+				$numrows->bindParam(':mid', $mid);
+				$numrows->execute();
+				$rowmailbox = $numrows->fetch();
+				$newsize = self::ResolveMailboxSize($size_mb, $currentuser, (int)$mid);
+				if ($newsize === false) {
+					return false;
+				}
+				$upd = $zdbh->prepare("UPDATE x_mailboxes SET mb_quota_in=:size WHERE mb_id_pk=:mid");
+				$upd->bindParam(':size', $newsize);
+				$upd->bindParam(':mid', $mid);
+				$upd->execute();
+			}
 			runtime_hook::Execute('OnBeforeUpdateMailbox');
 			$numrows = $zdbh->prepare("SELECT * FROM x_mailboxes WHERE mb_id_pk=:mid");
 			$numrows->bindParam(':mid', $mid);
@@ -369,6 +396,106 @@ class module_controller extends ctrl_module
     }
 	
     /**
+     * Tamaño por defecto de un buzón (MB): el ajuste global max_mail_size.
+     */
+    static function GetDefaultMailboxSize()
+    {
+        $v = (int) ctrl_options::GetSystemOption('max_mail_size');
+        return ($v > 0) ? $v : 200;
+    }
+
+    /**
+     * Tope por buzón (MB). max_mail_size es el máximo permitido para un buzón
+     * individual; si el paquete tiene cuota de disco finita menor, el tope
+     * efectivo lo marca el espacio restante del paquete.
+     */
+    static function GetMailboxMaxSize()
+    {
+        return self::GetDefaultMailboxSize();
+    }
+
+    /**
+     * MB totales ya reservados en buzones del usuario (sin contar $exclude_mid).
+     */
+    static function GetMailboxSpaceUsed($uid, $exclude_mid = 0)
+    {
+        global $zdbh;
+        $def = self::GetDefaultMailboxSize();
+        $sql = $zdbh->prepare("SELECT COALESCE(SUM(CASE WHEN mb_quota_in > 0 THEN mb_quota_in ELSE :def END), 0) AS used
+                               FROM x_mailboxes
+                               WHERE mb_acc_fk = :uid AND mb_deleted_ts IS NULL AND mb_id_pk <> :exmid");
+        $sql->bindParam(':def', $def);
+        $sql->bindParam(':uid', $uid);
+        $sql->bindParam(':exmid', $exclude_mid);
+        $sql->execute();
+        $row = $sql->fetch();
+        return (int) $row['used'];
+    }
+
+    /**
+     * MB libres de la cuota de disco del paquete tras descontar los buzones.
+     * Devuelve -1 si la cuota de disco es ilimitada (0).
+     */
+    static function GetRemainingDiskForMailboxes($currentuser, $exclude_mid = 0)
+    {
+        $quota_bytes = (int) $currentuser['diskquota'];
+        if ($quota_bytes <= 0) {
+            return -1; // ilimitado
+        }
+        $quota_mb = (int) round($quota_bytes / 1024000);
+        return $quota_mb - self::GetMailboxSpaceUsed($currentuser['userid'], $exclude_mid);
+    }
+
+    /**
+     * Resuelve y valida el tamaño (MB) solicitado para un buzón.
+     * Vacío => valor por defecto (max_mail_size). Devuelve false si el valor
+     * no es válido o no cabe en la cuota de disco del paquete (y fija
+     * self::$badsize para mostrar el error en la interfaz).
+     */
+    static function ResolveMailboxSize($input, $currentuser, $exclude_mid = 0)
+    {
+        $input = trim((string) $input);
+        if ($input === '') {
+            $size = self::GetDefaultMailboxSize();
+        } elseif (!ctype_digit($input)) {
+            self::$badsize = true;
+            return false;
+        } else {
+            $size = (int) $input;
+        }
+        if ($size < 10 || $size > self::GetMailboxMaxSize()) {
+            self::$badsize = true;
+            return false;
+        }
+        $remaining = self::GetRemainingDiskForMailboxes($currentuser, $exclude_mid);
+        if ($remaining >= 0 && $size > $remaining) {
+            self::$badsize = true;
+            return false;
+        }
+        return $size;
+    }
+
+    /**
+     * MB efectivos de un buzón (0/ausente => max_mail_size).
+     */
+    static function GetMailboxSizeMb($row)
+    {
+        $q = (int) $row['mb_quota_in'];
+        return ($q > 0) ? $q : self::GetDefaultMailboxSize();
+    }
+
+    /**
+     * Formato legible del tamaño: 500 MB, 1.5 GB...
+     */
+    static function FormatMailboxSize($mb)
+    {
+        if ($mb >= 1000) {
+            return rtrim(rtrim(number_format($mb / 1000, 2, '.', ''), '0'), '.') . ' GB';
+        }
+        return $mb . ' MB';
+    }
+
+    /**
      * End 'worker' methods.
      */
 
@@ -381,7 +508,8 @@ class module_controller extends ctrl_module
         runtime_csfr::Protect();
         $currentuser = ctrl_users::GetUserDetail();
         $formvars = $controller->GetAllControllerRequests('FORM');
-        if (self::ExecuteAddMailbox($currentuser['userid'], $formvars['inAddress'], $formvars['inDomain'], $formvars['inPassword']))
+        $size = isset($formvars['inSize']) ? $formvars['inSize'] : '';
+        if (self::ExecuteAddMailbox($currentuser['userid'], $formvars['inAddress'], $formvars['inDomain'], $formvars['inPassword'], $size))
             self::$ok = true;
         return true;
     }
@@ -412,7 +540,8 @@ class module_controller extends ctrl_module
         $currentuser = ctrl_users::GetUserDetail();
         $formvars = $controller->GetAllControllerRequests('FORM');
         $enabled = (isset($formvars['inEnabled'])) ? fs_director::GetCheckboxValue($formvars['inEnabled']) : 0;
-        if (self::ExecuteUpdateMailbox($formvars['inSave'], $formvars['inPassword'], $enabled))
+        $size = isset($formvars['inSize']) ? $formvars['inSize'] : '';
+        if (self::ExecuteUpdateMailbox($formvars['inSave'], $formvars['inPassword'], $enabled, $size))
             self::$ok = true;
         return true;
     }
@@ -541,6 +670,47 @@ class module_controller extends ctrl_module
                 ($currentuser['mailboxquota'] > ctrl_users::GetQuotaUsages('mailboxes', $currentuser['userid']));
     }
 
+    static function getMaxMailSize()
+    {
+        return self::GetMailboxMaxSize();
+    }
+
+    static function getDefaultMailSize()
+    {
+        return self::GetDefaultMailboxSize();
+    }
+
+    /**
+     * Getters planos para la plantilla (espacio de correo vs cuota de disco del paquete).
+     */
+    static function isMailboxSpaceUnlimited()
+    {
+        $currentuser = ctrl_users::GetUserDetail();
+        return ((int) $currentuser['diskquota']) <= 0;
+    }
+
+    static function getMailboxSpaceQuota()
+    {
+        $currentuser = ctrl_users::GetUserDetail();
+        return self::FormatMailboxSize((int) round(((int) $currentuser['diskquota']) / 1024000));
+    }
+
+    static function getMailboxSpaceUsedFmt()
+    {
+        $currentuser = ctrl_users::GetUserDetail();
+        return self::FormatMailboxSize(self::GetMailboxSpaceUsed($currentuser['userid']));
+    }
+
+    static function getMailboxSpaceFree()
+    {
+        $currentuser = ctrl_users::GetUserDetail();
+        $remaining = self::GetRemainingDiskForMailboxes($currentuser);
+        if ($remaining < 0) {
+            return ui_language::translate('Unlimited');
+        }
+        return self::FormatMailboxSize(max($remaining, 0));
+    }
+
     static function getEmailUsagepChart()
     {
         $currentuser = ctrl_users::GetUserDetail();
@@ -590,6 +760,10 @@ class module_controller extends ctrl_module
         }
         if (!fs_director::CheckForEmptyValue(self::$noaddress)) {
             return ui_sysmessage::shout(ui_language::translate("Your email address cannot be blank."), "zannounceerror");
+        }
+        if (!fs_director::CheckForEmptyValue(self::$badsize)) {
+            $msg = "Invalid mailbox size. Enter a value between 10 and " . self::GetMailboxMaxSize() . " MB, within the available disk quota of your package.";
+            return ui_sysmessage::shout(ui_language::translate($msg), "zannounceerror");
         }
         if (!fs_director::CheckForEmptyValue(self::$ok)) {
             return ui_sysmessage::shout(ui_language::translate("Changes to your mailboxes have been saved successfully!"), "zannounceok");

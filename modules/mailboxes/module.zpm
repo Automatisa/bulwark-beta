@@ -136,6 +136,11 @@ input[type=submit] {
 				<div class="table-responsive"><table class="table table-striped">
 				
                 <tr>
+                    <th><: Mailbox size :> (MB):</th>
+                    <td><input type="number" name="inSize" id="inSize" min="10" max="<@ MaxMailSize @>" step="1" value="<& size &>" data-numeric="int" /></td>
+                    <td><small><: Max :>: <@ MaxMailSize @> MB &middot; <: available :>: <@ MailboxSpaceFree @></small></td>
+                </tr>
+                <tr>
                     <th><: Enabled :>:</th>
                     <td><input type="checkbox" name="inEnabled" id="inEnabled" value="1" <& ischeck &> /></td>
                 </tr>
@@ -160,6 +165,7 @@ input[type=submit] {
             <div class="table-responsive"><table class="table table-striped">
                 <tr>
                     <th><: Address :></th>
+                    <th><: Size :></th>
                     <th><: Date created :></th>
                     <th><: Status :></th>
                     <th></th>
@@ -168,6 +174,7 @@ input[type=submit] {
                 <% loop MailboxList %>
                 <tr>
                     <td><& address &></td>
+                    <td><& size &></td>
                     <td><& created &></td>
                     <td>{! status !}</td>
                     <td><button class="button-loader btn btn-secondary" type="submit" id="button" name="inEdit_<& id &>" id="inEdit_<& id &>" value="inEdit_<& id &>"><i class="bi bi-pencil me-1"></i><: Edit :></button></td>
@@ -215,6 +222,16 @@ input[type=submit] {
 								<th></th>
 								<td><a href="#" class="link-password" id="generate" data-password-show="inPassword" data-check="showPassword" ><: Generate Password :></a></td>
 								<td></td>
+							</tr>
+
+							<tr>
+								<th nowrap="nowrap"><: Mailbox size :> (MB):</th>
+								<td><input type="number" name="inSize" id="inSize" min="10" max="<@ MaxMailSize @>" step="1" value="<@ DefaultMailSize @>" data-numeric="int" /></td>
+								<td><small><: Default :>: <@ DefaultMailSize @> MB &middot; <: Max :>: <@ MaxMailSize @> MB</small></td>
+							</tr>
+							<tr>
+								<th></th>
+								<td colspan="2"><small><: The mailbox size is discounted from your package disk quota :> — <: Disk quota :>: <@ MailboxSpaceQuota @> &middot; <: reserved by mailboxes :>: <@ MailboxSpaceUsedFmt @> &middot; <: available :>: <@ MailboxSpaceFree @></small></td>
 							</tr>
 							
 						</table>

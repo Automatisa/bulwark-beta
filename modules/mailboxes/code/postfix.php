@@ -99,7 +99,18 @@ if (!fs_director::CheckForEmptyValue(self::$create)) {
         $salt = '$6$' . substr(base64_encode(random_bytes(12)), 0, 16) . '$';
         $password = '{SHA512-CRYPT}' . crypt($password, $salt);
         $location = $currentuser['username'] . "/mail/" . $domain . "/" . $address . "/";
-        $maxMail = ctrl_options::GetSystemOption('max_mail_size');
+        // Cuota del buzón: tamaño elegido por el usuario al crearlo (mb_quota_in, MB);
+        // Dovecot la convierte en bytes (mailbox.quota * 1024 * 1024). Si por cualquier
+        // motivo no existe el registro, se usa el ajuste global max_mail_size.
+        $maxMail = (int) ctrl_options::GetSystemOption('max_mail_size');
+        $sz = $zdbh->prepare("SELECT mb_quota_in FROM x_mailboxes WHERE mb_address_vc=:fulladdress AND mb_deleted_ts IS NULL");
+        $sz->bindParam(':fulladdress', $fulladdress);
+        $sz->execute();
+        if ($mbrow = $sz->fetch()) {
+            if ((int) $mbrow['mb_quota_in'] > 0) {
+                $maxMail = (int) $mbrow['mb_quota_in'];
+            }
+        }
 
         $sql->bindParam(':password', $password);
         $sql->bindParam(':address', $address);
@@ -175,5 +186,14 @@ if (!fs_director::CheckForEmptyValue(self::$update)) {
     $sql->bindParam(':enabled', $enabled);
     $sql->bindParam(':mb_address_vc', $rowmailbox['mb_address_vc']);
     $sql->execute();
+    // Sincronizar la cuota (MB) si el buzón tiene tamaño asignado en el panel
+    // ($rowmailbox se relee en el controlador tras el UPDATE de mb_quota_in).
+    if (isset($rowmailbox['mb_quota_in']) && (int) $rowmailbox['mb_quota_in'] > 0) {
+        $qmb = (int) $rowmailbox['mb_quota_in'];
+        $sql = $mail_db->prepare("UPDATE mailbox SET quota=:quota, modified=NOW() WHERE username=:mb_address_vc");
+        $sql->bindParam(':quota', $qmb);
+        $sql->bindParam(':mb_address_vc', $rowmailbox['mb_address_vc']);
+        $sql->execute();
+    }
 }
 ?>

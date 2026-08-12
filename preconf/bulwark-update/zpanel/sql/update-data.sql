@@ -74,7 +74,7 @@ INSERT INTO zpanel_core.`x_settings`(`so_id_pk`,`so_name_vc`,`so_cleanname_vc`,`
 (50,'ftp_config_file','FTP Config File','',NULL,'The path to the configuration file if applicable.','FTP Config','true'),
 (51,'mailserver_db','Mailserver Database','bulwark_postfix',NULL,'The name of the mail server database','Mail Config','true'),
 (52,'hmailserver_et','Hmail Encryption Type','2',NULL,'Type of encryption uses for hMailServer passwords','Mail Config','false'),
-(53,'max_mail_size','Max Mailbox Size','200',NULL,'Maximum size in megabytes allowed for mailboxes. Default = 200','Mail Config','true'),
+(53,'max_mail_size','Max Mailbox Size','200',NULL,'Default mailbox size (MB) when creating a mailbox, and the maximum size a single mailbox can have. Users can choose any size up to this value, discounted from their package disk quota. Default = 200','Mail Config','true'),
 (54,'mailserver_php','Mailserver PHP','postfix.php',NULL,'Name of PHP to include when adding mailbox data.','Mail Config','true'),
 (55,'remove_orphan','Remove Orphans','true','true|false','When domains are deleted, also delete all mailboxes for that domain when the daemon runs. (true/false)','Mail Config','true'),
 (56,'named_dir','Named Directory','/etc/bulwark/configs/bind/etc/',NULL,'Path to the directory where named.conf is stored','DNS Config','true'),

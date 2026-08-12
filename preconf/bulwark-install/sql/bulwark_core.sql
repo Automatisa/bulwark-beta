@@ -483,6 +483,7 @@ CREATE TABLE `x_mailboxes` (
   `mb_acc_fk` int(6) DEFAULT NULL,
   `mb_address_vc` varchar(255) DEFAULT NULL,
   `mb_enabled_in` int(1) DEFAULT 1,
+  `mb_quota_in` int(10) unsigned NOT NULL DEFAULT 0 COMMENT 'Tamaño del buzón en MB (0 = usar max_mail_size)',
   `mb_created_ts` int(30) DEFAULT NULL,
   `mb_deleted_ts` int(30) DEFAULT NULL,
   `mb_antispam_in` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1=antispam activo, 0=desactivado',
@@ -901,7 +902,7 @@ INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('50', 'ftp_config_file', 'FTP Config File', '/usr/local/etc/bulwark/proftpd/proftpd-mysql.conf', NULL, 'The path to the configuration file if applicable.', 'FTP Config', 'false');
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('51', 'mailserver_db', 'Mailserver Database', 'bulwark_postfix', NULL, 'The name of the mail server database', 'Mail Config', 'false');
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('52', 'hmailserver_et', 'Hmail Encryption Type', '2', NULL, 'Type of encryption uses for hMailServer passwords', 'Mail Config', 'false');
-INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('53', 'max_mail_size', 'Max Mailbox Size', '200', NULL, 'Maximum size in megabytes allowed for mailboxes. Default = 200', 'Mail Config', 'true');
+INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('53', 'max_mail_size', 'Max Mailbox Size', '200', NULL, 'Default mailbox size (MB) when creating a mailbox, and the maximum size a single mailbox can have. Users can choose any size up to this value, discounted from their package disk quota. Default = 200', 'Mail Config', 'true');
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('54', 'mailserver_php', 'Mailserver PHP', 'postfix.php', NULL, 'Name of PHP to include when adding mailbox data.', 'Mail Config', 'false');
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('55', 'remove_orphan', 'Remove Orphans', 'true', 'true|false', 'When domains are deleted, also delete all mailboxes for that domain when the daemon runs. (true/false)', 'Mail Config', 'true');
 INSERT INTO `x_settings` (`so_id_pk`, `so_name_vc`, `so_cleanname_vc`, `so_value_tx`, `so_defvalues_tx`, `so_desc_tx`, `so_module_vc`, `so_usereditable_en`) VALUES ('56', 'named_dir', 'Named Directory', '/usr/local/etc/bulwark/bind/etc/', NULL, 'Path to the directory where named.conf is stored', 'DNS Config', 'false');
