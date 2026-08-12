@@ -461,10 +461,11 @@ class module_controller extends ctrl_module {
 						$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
 						$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Let\'s Encrypt ya emitió 5 certificados con ese mismo conjunto de nombres en 7 días: *.' . htmlspecialchars($domain) . ' se emitirá automáticamente a partir del ' . gmdate('Y-m-d H:i', $when) . ' UTC (queda en cola).');
 					} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
-					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ajusta el DNS del dominio a este servidor para que el daemon lo emita (validación DNS-01).');
-				} else {
-					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => time(), ':id' => (int)$vh['vh_id_pk']));
-					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Se emitirá *.' . htmlspecialchars($domain) . ' por DNS-01 en el próximo ciclo del daemon.');
+						$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ajusta el DNS del dominio a este servidor para que el daemon lo emita (validación DNS-01).');
+					} else {
+						$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => time(), ':id' => (int)$vh['vh_id_pk']));
+						$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Se emitirá *.' . htmlspecialchars($domain) . ' por DNS-01 en el próximo ciclo del daemon.');
+					}
 				}
 			} else {
 				$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard desactivado para ' . htmlspecialchars($domain) . ' (el cert actual sigue vigente hasta su renovación normal).');
