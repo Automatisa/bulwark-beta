@@ -626,7 +626,7 @@ class privilege
         $lines = array(
             '# Bulwark privilege rules (security fix, June 2026).',
             '# Generated automatically — do not edit by hand; regenerate via',
-            '#   php -r "require \"/usr/local/bulwark/panel/dryden/sys/privilege.class.php\"; echo privilege::sudoersRules(\"www\");\"',
+            '#   php -r \'require "/usr/local/bulwark/dryden/sys/privilege.class.php"; echo privilege::sudoersRules("' . $webUser . '");\'',
             '# Each line below maps to a single action key in privilege::run().',
             '',
         );
@@ -658,7 +658,7 @@ class privilege
         $lines = array(
             '# Bulwark privilege rules (security fix, June 2026).',
             '# Generated automatically — do not edit by hand; regenerate via',
-            '#   php -r "require \"/usr/local/bulwark/panel/dryden/sys/privilege.class.php\"; echo privilege::doasRules(\"www\");\"',
+            '#   php -r \'require "/usr/local/bulwark/dryden/sys/privilege.class.php"; echo privilege::doasRules("' . $webUser . '");\'',
             '# Each line below maps to a single action key in privilege::run().',
             '# Lines take effect after installing to /usr/local/etc/doas.conf',
             '# with mode 0600 owner root:wheel.',
