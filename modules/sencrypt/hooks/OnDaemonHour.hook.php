@@ -295,9 +295,11 @@ function renewCertificates() {
 						}
 					}
 
-					// Reemision forzada desde el panel (fuerza aunque ARI/estatico no toque).
+					// Reemision forzada desde el panel (fuerza aunque ARI/estatico no toque). Si el
+					// timestamp es FUTURO es una reemisión PROGRAMADA al expirar el cooldown de 48h
+					// (doSetWildcard/doForceReissue): se espera a que llegue el momento.
 					$reissueReq = (int)($sslVhost["vh_le_reissue_ts"] ?? 0);
-					if ($reissueReq > 0) {
+					if ($reissueReq > 0 && $reissueReq <= time()) {
 						if (!file_exists($certfile) || filemtime($certfile) < $reissueReq) {
 							echo "   Forced reissue requested via panel.".fs_filehandler::NewLine();
 							$needsgen = true;
@@ -489,8 +491,9 @@ function renewPanelCertificates() {
 						
 						// Reemisión forzada del panel (mismo mecanismo que los clientes con vh_le_reissue_ts):
 						// ajuste panel_le_reissue_ts. Útil p.ej. para migrar el cert del panel a ECDSA ya.
+						// Timestamp FUTURO = programada al expirar el cooldown: se espera.
 						$reissueReq = (int)ctrl_options::GetSystemOption('panel_le_reissue_ts');
-						if ($reissueReq > 0 && (!file_exists($certfile) || filemtime($certfile) < $reissueReq)) {
+						if ($reissueReq > 0 && $reissueReq <= time() && (!file_exists($certfile) || filemtime($certfile) < $reissueReq)) {
 							echo "   Panel: reemisión forzada solicitada." . fs_filehandler::NewLine();
 							$needsgen = true;
 						}

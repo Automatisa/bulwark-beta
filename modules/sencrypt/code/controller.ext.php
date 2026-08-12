@@ -444,8 +444,17 @@ class module_controller extends ctrl_module {
 			$zdbh->prepare("UPDATE x_vhosts SET vh_le_wildcard_in=:w WHERE vh_id_pk=:id")->execute(array(':w' => $on, ':id' => (int)$vh['vh_id_pk']));
 			if ($on) {
 				$last = (int)($vh['vh_le_reissue_ts'] ?? 0);
-				if ($last > 0 && (time() - $last) < 48 * 3600) {
-					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. (Ya hubo una (re)emisión reciente; se emitirá pasado el cooldown de 48h de Let\'s Encrypt.)');
+				if ($last > 0 && $last <= time() && (time() - $last) < 48 * 3600) {
+					# Cooldown activo (LE: 5 certs idénticos/7 días -> espaciado mínimo ~34h; usamos 48h).
+					# PROGRAMAR la reemisión para cuando expire: vh_le_reissue_ts con instante FUTURO; el
+					# daemon la ejecuta al llegar el momento (OnDaemonHour: reissueReq <= time()). Así el
+					# wildcard se emite solo, sin que el usuario tenga que volver a pulsar nada.
+					$when = $last + 48 * 3600;
+					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
+					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ya hubo una (re)emisión reciente: *.' . htmlspecialchars($domain) . ' se emitirá automáticamente a partir del ' . gmdate('Y-m-d H:i', $when) . ' UTC (cooldown de 48h por el límite de Let\'s Encrypt de 5 certificados idénticos cada 7 días).');
+				} elseif ($last > time()) {
+					$h = max(1, (int)ceil(($last - time()) / 3600));
+					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ya hay una reemisión programada; *.' . htmlspecialchars($domain) . ' se emitirá en ~' . $h . ' h (cooldown de Let\'s Encrypt).');
 				} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
 					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ajusta el DNS del dominio a este servidor para que el daemon lo emita (validación DNS-01).');
 				} else {
@@ -539,10 +548,17 @@ class module_controller extends ctrl_module {
 			$_SESSION['sencrypt_flash'] = array('err', ui_language::translate('Domain not valid.'));
 		} else {
 			$last = (int)($vh['vh_le_reissue_ts'] ?? 0);
-			if ($last > 0 && (time() - $last) < 48 * 3600) {
-				$h = ceil((48 * 3600 - (time() - $last)) / 3600);
-				$_SESSION['sencrypt_flash'] = array('err',
-					'Ya solicitaste una reemisión hace poco. Espera ~' . $h . ' h (Let\'s Encrypt limita a 5 certificados idénticos por 7 días).');
+			if ($last > time()) {
+				$h = max(1, (int)ceil(($last - time()) / 3600));
+				$_SESSION['sencrypt_flash'] = array('ok',
+					'Ya hay una reemisión programada para ' . htmlspecialchars($domain) . '; se ejecutará en ~' . $h . ' h (cooldown de Let\'s Encrypt).');
+			} elseif ($last > 0 && (time() - $last) < 48 * 3600) {
+				# Programarla al expirar el cooldown en vez de obligar a volver a pulsar (timestamp futuro).
+				$when = $last + 48 * 3600;
+				$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")
+				     ->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
+				$_SESSION['sencrypt_flash'] = array('ok',
+					'Ya solicitaste una reemisión hace poco. Queda programada para el ' . gmdate('Y-m-d H:i', $when) . ' UTC (Let\'s Encrypt limita a 5 certificados idénticos por 7 días).');
 			} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
 				$_SESSION['sencrypt_flash'] = array('err',
 					'El dominio ' . htmlspecialchars($domain) . ' no resuelve por DNS a una IP de este servidor; corrige el DNS antes de reemitir (evita agotar el límite de fallos de validación de Let\'s Encrypt).');
