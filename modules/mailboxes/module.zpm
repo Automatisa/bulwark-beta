@@ -137,8 +137,8 @@ input[type=submit] {
 				
                 <tr>
                     <th><: Mailbox size :> (MB):</th>
-                    <td><input type="number" name="inSize" id="inSize" min="10" max="<@ MaxMailSize @>" step="1" value="<& size &>" data-numeric="int" /></td>
-                    <td><small><: Max :>: <@ MaxMailSize @> MB &middot; <: available :>: <@ MailboxSpaceFree @></small></td>
+                    <td><input type="number" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<& size &>" data-numeric="int" /></td>
+                    <td><small><: available :>: <@ MailboxSpaceFree @> &middot; 1000 MB = 1 GB</small></td>
                 </tr>
                 <tr>
                     <th><: Enabled :>:</th>
@@ -226,8 +226,8 @@ input[type=submit] {
 
 							<tr>
 								<th nowrap="nowrap"><: Mailbox size :> (MB):</th>
-								<td><input type="number" name="inSize" id="inSize" min="10" max="<@ MaxMailSize @>" step="1" value="<@ DefaultMailSize @>" data-numeric="int" /></td>
-								<td><small><: Default :>: <@ DefaultMailSize @> MB &middot; <: Max :>: <@ MaxMailSize @> MB</small></td>
+								<td><input type="number" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<@ DefaultMailSize @>" data-numeric="int" /></td>
+								<td><small><: Default :>: <@ DefaultMailSize @> MB &middot; 1000 MB = 1 GB</small></td>
 							</tr>
 							<tr>
 								<th></th>

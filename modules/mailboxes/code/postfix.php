@@ -99,18 +99,14 @@ if (!fs_director::CheckForEmptyValue(self::$create)) {
         $salt = '$6$' . substr(base64_encode(random_bytes(12)), 0, 16) . '$';
         $password = '{SHA512-CRYPT}' . crypt($password, $salt);
         $location = $currentuser['username'] . "/mail/" . $domain . "/" . $address . "/";
-        // Cuota del buzón: tamaño elegido por el usuario al crearlo (mb_quota_in, MB);
-        // Dovecot la convierte en bytes (mailbox.quota * 1024 * 1024). Si por cualquier
-        // motivo no existe el registro, se usa el ajuste global max_mail_size.
-        $maxMail = (int) ctrl_options::GetSystemOption('max_mail_size');
-        $sz = $zdbh->prepare("SELECT mb_quota_in FROM x_mailboxes WHERE mb_address_vc=:fulladdress AND mb_deleted_ts IS NULL");
-        $sz->bindParam(':fulladdress', $fulladdress);
-        $sz->execute();
-        if ($mbrow = $sz->fetch()) {
-            if ((int) $mbrow['mb_quota_in'] > 0) {
-                $maxMail = (int) $mbrow['mb_quota_in'];
-            }
+        // Cuota del buzón: el controlador pasa en $maxMail el tamaño (MB) elegido al
+        // crear el buzón (el include se ejecuta ANTES del INSERT en x_mailboxes, por lo
+        // que no se puede leer de la BD aquí). Dovecot la convierte en bytes
+        // (mailbox.quota * 1024 * 1024). Si no viene del controlador, ajuste global.
+        if (!isset($maxMail) || (int) $maxMail <= 0) {
+            $maxMail = (int) ctrl_options::GetSystemOption('max_mail_size');
         }
+        $maxMail = (int) $maxMail;
 
         $sql->bindParam(':password', $password);
         $sql->bindParam(':address', $address);

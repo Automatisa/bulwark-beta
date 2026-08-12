@@ -153,6 +153,9 @@ class module_controller extends ctrl_module
         $address = strtolower(str_replace(' ', '', $address));
         $fulladdress = strtolower(str_replace(' ', '', $address . "@" . $domain));
         self::$create = true;
+        // Tamaño elegido (MB) para el backend de correo. Se define AQUÍ porque el
+        // include del mailserver se ejecuta ANTES del INSERT en x_mailboxes.
+        $maxMail = $size_mb;
         // Include mail server specific file here.
         $MailServerFile = __DIR__ . '/' . basename(ctrl_options::GetSystemOption('mailserver_php'));
         if (file_exists($MailServerFile))
@@ -397,21 +400,13 @@ class module_controller extends ctrl_module
 	
     /**
      * Tamaño por defecto de un buzón (MB): el ajuste global max_mail_size.
+     * El usuario puede elegir cualquier tamaño (límite de cordura: 10 TB);
+     * el límite real es la cuota de disco del paquete.
      */
     static function GetDefaultMailboxSize()
     {
         $v = (int) ctrl_options::GetSystemOption('max_mail_size');
         return ($v > 0) ? $v : 200;
-    }
-
-    /**
-     * Tope por buzón (MB). max_mail_size es el máximo permitido para un buzón
-     * individual; si el paquete tiene cuota de disco finita menor, el tope
-     * efectivo lo marca el espacio restante del paquete.
-     */
-    static function GetMailboxMaxSize()
-    {
-        return self::GetDefaultMailboxSize();
     }
 
     /**
@@ -463,7 +458,7 @@ class module_controller extends ctrl_module
         } else {
             $size = (int) $input;
         }
-        if ($size < 10 || $size > self::GetMailboxMaxSize()) {
+        if ($size < 10 || $size > 10485760) { // 10 MB .. 10 TB
             self::$badsize = true;
             return false;
         }
@@ -670,11 +665,6 @@ class module_controller extends ctrl_module
                 ($currentuser['mailboxquota'] > ctrl_users::GetQuotaUsages('mailboxes', $currentuser['userid']));
     }
 
-    static function getMaxMailSize()
-    {
-        return self::GetMailboxMaxSize();
-    }
-
     static function getDefaultMailSize()
     {
         return self::GetDefaultMailboxSize();
@@ -762,7 +752,7 @@ class module_controller extends ctrl_module
             return ui_sysmessage::shout(ui_language::translate("Your email address cannot be blank."), "zannounceerror");
         }
         if (!fs_director::CheckForEmptyValue(self::$badsize)) {
-            $msg = "Invalid mailbox size. Enter a value between 10 and " . self::GetMailboxMaxSize() . " MB, within the available disk quota of your package.";
+            $msg = "Invalid mailbox size. Enter a value between 10 MB and 10 TB, within the available disk quota of your package.";
             return ui_sysmessage::shout(ui_language::translate($msg), "zannounceerror");
         }
         if (!fs_director::CheckForEmptyValue(self::$ok)) {
