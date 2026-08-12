@@ -20,7 +20,7 @@ try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname", $user, $pass, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_SILENT));
 } catch (Exception $e) { exit(1); }
 
-$j = $pdo->query("SELECT * FROM x_imapsync_jobs WHERE ij_id_pk=" . $jid)->fetch(PDO::FETCH_ASSOC);
+$j = $pdo->query("SELECT * FROM x_imapsync_jobs WHERE ij_id_pk=" . $jid . " AND ij_deleted_ts IS NULL")->fetch(PDO::FETCH_ASSOC);
 if (!$j || !in_array($j['ij_status_vc'], array('queued', 'running', 'partial'), true)) { exit(0); }
 
 function opt($pdo, $k, $d) {

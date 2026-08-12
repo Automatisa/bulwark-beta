@@ -101,6 +101,11 @@ class module_controller extends ctrl_module
                      . '<input type="hidden" name="inId" value="' . (int)$r['ij_id_pk'] . '"><button class="btn btn-sm btn-warning" type="submit">Cancelar</button></form> ';
             }
             $act .= '<a class="btn btn-sm btn-secondary" href="./?module=imapsync&show=log&id=' . (int)$r['ij_id_pk'] . '">Log</a>';
+            // Borrar (soft-delete) solo en estados terminales o encolado; un 'running' se cancela primero.
+            if (in_array($st, array('queued', 'done', 'error', 'canceled', 'partial'), true)) {
+                $act .= ' <form action="./?module=imapsync&action=DeleteJob" method="post" style="display:inline">' . $csrf
+                     . '<input type="hidden" name="inId" value="' . (int)$r['ij_id_pk'] . '"><button class="btn btn-sm btn-danger" type="submit" data-confirm="¿Borrar el trabajo #' . (int)$r['ij_id_pk'] . '? Se eliminarán su registro, su log y sus archivos de credenciales.">Borrar</button></form>';
+            }
             $h .= '<tr><td>' . (int)$r['ij_id_pk'] . '</td><td>' . self::esc($r['ij_dest_user_vc']) . '</td>'
                 . '<td>' . self::esc($r['ij_src_user_vc']) . '<br><small class="text-muted">' . self::esc($r['ij_src_host_vc']) . '</small></td>'
                 . '<td><b style="color:' . $c . '">' . self::esc($st) . '</b>';
@@ -191,6 +196,29 @@ class module_controller extends ctrl_module
         $zdbh->prepare("UPDATE x_imapsync_jobs SET ij_status_vc='canceled', ij_updated_ts=UNIX_TIMESTAMP() WHERE ij_id_pk=:id AND ij_status_vc IN ('queued','running','partial')" . $own)
              ->execute(array(':id' => $id));
         $_SESSION['imapsync_flash'] = array('ok', 'Trabajo #' . $id . ' cancelado.');
+        if (!headers_sent()) { header('location: ./?module=imapsync'); exit; }
+    }
+
+    static function doDeleteJob()
+    {
+        global $zdbh, $controller;
+        runtime_csfr::Protect();
+        $cu = ctrl_users::GetUserDetail();
+        $id = (int)$controller->GetControllerRequest('FORM', 'inId');
+        // Anti-IDOR: solo el dueño del trabajo (o el admin) puede borrarlo.
+        $own = self::isAdmin() ? '' : ' AND ij_acc_fk=' . (int)$cu['userid'];
+        $j = $zdbh->prepare("SELECT ij_status_vc, ij_passfile_vc, ij_log_vc FROM x_imapsync_jobs WHERE ij_id_pk=:id AND ij_deleted_ts IS NULL" . $own);
+        $j->execute(array(':id' => $id));
+        $r = $j->fetch(PDO::FETCH_ASSOC);
+        if (!$r) { self::fail('Trabajo no encontrado.'); }
+        if ($r['ij_status_vc'] === 'running') { self::fail('No se puede borrar un trabajo en curso; cancélalo primero.'); }
+        // Borrado lógico + limpieza de archivos del trabajo (passfile, log, pidfile y passfiles temporales).
+        if (!empty($r['ij_passfile_vc']) && is_file($r['ij_passfile_vc'])) { @unlink($r['ij_passfile_vc']); }
+        if (!empty($r['ij_log_vc']) && is_file($r['ij_log_vc']))            { @unlink($r['ij_log_vc']); }
+        @unlink(self::RUNDIR . $id . '.pid'); @unlink(self::RUNDIR . $id . '.p1'); @unlink(self::RUNDIR . $id . '.p2');
+        $zdbh->prepare("UPDATE x_imapsync_jobs SET ij_deleted_ts=UNIX_TIMESTAMP(), ij_updated_ts=UNIX_TIMESTAMP() WHERE ij_id_pk=:id AND ij_status_vc<>'running' AND ij_deleted_ts IS NULL" . $own)
+             ->execute(array(':id' => $id));
+        $_SESSION['imapsync_flash'] = array('ok', 'Trabajo #' . $id . ' borrado.');
         if (!headers_sent()) { header('location: ./?module=imapsync'); exit; }
     }
 
