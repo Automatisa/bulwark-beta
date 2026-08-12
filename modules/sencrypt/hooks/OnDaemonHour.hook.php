@@ -233,6 +233,8 @@ function renewCertificates() {
 
 			# Require Lescript for renewal of SSL certs
 			require_once 'modules/sencrypt/code/Lescript.php';
+			# Controller: prospectiveLeNames (set que se firma) + leLogIssue/leSeedHistory (historial).
+			require_once 'modules/sencrypt/code/controller.ext.php';
 
 			// Always use UTC
 			date_default_timezone_set("UTC");
@@ -296,8 +298,8 @@ function renewCertificates() {
 					}
 
 					// Reemision forzada desde el panel (fuerza aunque ARI/estatico no toque). Si el
-					// timestamp es FUTURO es una reemisión PROGRAMADA al expirar el cooldown de 48h
-					// (doSetWildcard/doForceReissue): se espera a que llegue el momento.
+					// timestamp es FUTURO es una reemisión PROGRAMADA al expirar el cooldown por
+					// historial (5 certs por set exacto/7 días; doSetWildcard/doForceReissue): se espera.
 					$reissueReq = (int)($sslVhost["vh_le_reissue_ts"] ?? 0);
 					if ($reissueReq > 0 && $reissueReq <= time()) {
 						if (!file_exists($certfile) || filemtime($certfile) < $reissueReq) {
@@ -338,19 +340,16 @@ function renewCertificates() {
 						// WILDCARD: un solo cert *.dominio + dominio via DNS-01 (reto _acme-challenge). Cubre todos
 						// los subdominios en un cert -> esquiva el limite 50 certs/dominio/7d. Los ALIAS del vhost
 						// elegibles (zona gestionada por el panel) se añaden como SAN: el wildcard NO los cubre.
-						require_once 'modules/sencrypt/code/controller.ext.php';
-						$wcNames = array('*.'.$domain, $domain);
-						foreach (module_controller::getEligibleAliases($domain, (int)$sslVhost['vh_acc_fk']) as $alias) {
-							if (!in_array($alias, $wcNames, true)) { $wcNames[] = $alias; }
-						}
-						echo "   WILDCARD (DNS-01): emitiendo ".implode(' + ', $wcNames).fs_filehandler::NewLine();
-						$le->signDomains($wcNames, false, $replaces, 'dns-01',
+						$usedNames = module_controller::prospectiveLeNames($sslVhost);
+						echo "   WILDCARD (DNS-01): emitiendo ".implode(' + ', $usedNames).fs_filehandler::NewLine();
+						$le->signDomains($usedNames, false, $replaces, 'dns-01',
 							array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
 							// Cablear los subdominios del dominio para que sirvan este cert wildcard.
 							sencrypt_wire_wildcard_subdomains($sslVhost);
 					} else if ($domainType == 2 ) {
 						// Create domain without www. becuase its a subdomain
-						$le->signDomains(array($domain), false, $replaces);
+						$usedNames = array($domain);
+						$le->signDomains($usedNames, false, $replaces);
 					} else {
 						// Root domain: dominio + www + los SAN EXTRA que el usuario haya elegido para su
 						// cert (subdominios propios, editados en la UI de Sencrypt -> vh_le_extra_sans).
@@ -363,26 +362,17 @@ function renewCertificates() {
 						// (getEligibleAliases): solo los de zona DNS gestionada por el panel y del mismo
 						// usuario; los externos se omiten para no romper la orden ACME. Si se quita un
 						// alias en Domains, desaparece del cert en la siguiente renovación.
-						require_once 'modules/sencrypt/code/controller.ext.php';
-						$names = array($domain, 'www.'.$domain);
-						$stored = array_filter(array_map('trim', explode(',', strtolower((string)($sslVhost['vh_le_extra_sans'] ?? '')))));
-						if (!empty($stored)) {
-							$eligible = module_controller::getEligibleSubdomains($domain, (int)$sslVhost['vh_acc_fk']);
-							foreach ($stored as $s) {
-								if ($s !== '' && in_array($s, $eligible, true) && !in_array($s, $names, true)) { $names[] = $s; }
-							}
-						}
-						foreach (module_controller::getEligibleAliases($domain, (int)$sslVhost['vh_acc_fk']) as $alias) {
-							if (!in_array($alias, $names, true)) { $names[] = $alias; }
-						}
-						if (count($names) > 2) {
-							echo "   Nombres extra (DNS-01): ".implode(', ', array_slice($names, 2)).fs_filehandler::NewLine();
-							$le->signDomains($names, false, $replaces, 'dns-01',
+						$usedNames = module_controller::prospectiveLeNames($sslVhost);
+						if (count($usedNames) > 2) {
+							echo "   Nombres extra (DNS-01): ".implode(', ', array_slice($usedNames, 2)).fs_filehandler::NewLine();
+							$le->signDomains($usedNames, false, $replaces, 'dns-01',
 								array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
 						} else {
-							$le->signDomains($names, false, $replaces);
+							$le->signDomains($usedNames, false, $replaces);
 						}
 					}
+						# Historial de emisiones para el cooldown "5 certs por set exacto/7 días".
+						module_controller::leLogIssue((int)$sslVhost['vh_id_pk'], $domain, $usedNames);
 						$issuedThisRun++;
 
 				}
@@ -419,6 +409,10 @@ function renewCertificates() {
 			// ventana ARI y el instante de renovación elegido (visibilidad estilo Shopify).
 			sencrypt_status_upsert($sslVhost['vh_id_pk'], $sslVhost['vh_name_vc'], $vhostOwner['username'], "$certlocation/cert.pem", $lastErr, $ariStart, $ariEnd, $renewAt);
 
+			// Sembrar el historial de emisiones con el cert vigente (idempotente: 1ª vez por vhost),
+			// para que los certs anteriores a esta función computen contra el cupo de 5/set/7 días.
+			module_controller::leSeedHistory((int)$sslVhost['vh_id_pk'], $sslVhost['vh_name_vc'], "$certlocation/cert.pem");
+
 			echo "Domain: " . $sslVhost['vh_name_vc'] . " analyzed." . fs_filehandler::NewLine() . fs_filehandler::NewLine();
 		}
 	}
@@ -451,6 +445,8 @@ function renewPanelCertificates() {
 
 			# Require Lescript for renewal of SSL certs
 			require_once 'modules/sencrypt/code/Lescript.php';
+			# Controller: leLogIssue/leSeedHistory (historial de emisiones para el cooldown).
+			require_once 'modules/sencrypt/code/controller.ext.php';
 
 			// Always use UTC
 			date_default_timezone_set("UTC");
@@ -559,6 +555,9 @@ function renewPanelCertificates() {
 						$le->signDomains($panelCertDomains, false, $replaces);
 					}
 
+					# Historial de emisiones para el cooldown "5 certs por set exacto/7 días".
+					module_controller::leLogIssue(0, $domain, $panelCertDomains);
+
 					// After successful renewal, update panel_ssl_tx in DB to point to new cert
 					$newCert = $certlocation . "cert.pem";
 					$newKey  = $certlocation . "private.pem";
@@ -599,6 +598,9 @@ function renewPanelCertificates() {
 			// cualquier valor !== '' (null incluido), y el cert del panel es válido -> se derivaría
 			// el estado del propio cert (valid/expiring/expired).
 			sencrypt_status_upsert(0, $domain, $panelOwner, rtrim($certlocation, '/') . "/cert.pem", (isset($emsg) && $emsg !== '') ? $emsg : '');
+
+			// Sembrar el historial con el cert vigente del panel (idempotente: 1ª vez).
+			module_controller::leSeedHistory(0, $domain, $certfile);
 
 			echo "Control Panel Domain: " . $domain . " analyzed." . fs_filehandler::NewLine();
 		}

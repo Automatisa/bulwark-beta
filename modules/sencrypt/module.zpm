@@ -115,6 +115,7 @@
 					<tr>
 						<td>
 							<& Domain_AC &>
+							{! Queue_AC !}
 						</td>
 						<td>
 							<small><& Names_AC &></small>

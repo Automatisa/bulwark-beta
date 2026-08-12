@@ -150,3 +150,10 @@ details.sencrypt-sans[open] > summary { margin-bottom: 6px; }
 
 /* Lista de nombres (SANs) del cert en las tablas */
 td small { color: #555; word-break: break-word; }
+
+/* Insignia de (re)emisión en cola (programada tras el cooldown o pendiente del daemon) */
+.sencrypt-queue {
+    margin-top: 4px;
+    font-size: 0.85em;
+    color: #e65100;
+}

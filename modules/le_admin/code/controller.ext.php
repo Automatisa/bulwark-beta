@@ -77,8 +77,11 @@ class module_controller extends ctrl_module
 
         // --- 3. Pendientes / cola ---
         $h .= '<div class="zgrid_wrapper"><h3>Pendientes</h3>';
-        $reiss = $zdbh->query("SELECT vh_name_vc FROM x_vhosts WHERE vh_le_reissue_ts IS NOT NULL AND vh_le_reissue_ts>0 AND vh_deleted_ts IS NULL ORDER BY vh_le_reissue_ts DESC")->fetchAll(PDO::FETCH_ASSOC);
-        $h .= '<p><b>Reemisión solicitada:</b> ' . ($reiss ? implode(', ', array_map(function ($r) use ($esc) { return $esc($r['vh_name_vc']); }, $reiss)) : 'ninguna') . '</p>';
+        $reiss = $zdbh->query("SELECT vh_name_vc, vh_le_reissue_ts FROM x_vhosts WHERE vh_le_reissue_ts IS NOT NULL AND vh_le_reissue_ts>0 AND vh_deleted_ts IS NULL ORDER BY vh_le_reissue_ts DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $h .= '<p><b>Reemisión solicitada:</b> ' . ($reiss ? implode(', ', array_map(function ($r) use ($esc) {
+            $t = (int)$r['vh_le_reissue_ts'];
+            return $esc($r['vh_name_vc']) . ($t > time() ? ' <span style="color:#e65100;">(en cola hasta ' . gmdate('Y-m-d H:i', $t) . ' UTC)</span>' : '');
+        }, $reiss)) : 'ninguna') . '</p>';
         $att = $zdbh->query("SELECT ls_domain_vc, ls_state_vc FROM x_le_status WHERE ls_state_vc IN ('expiring','expired','missing','error') ORDER BY ls_expires_ts ASC")->fetchAll(PDO::FETCH_ASSOC);
         $h .= '<p><b>Requieren atención (' . count($att) . '):</b> ' . ($att ? implode(', ', array_map(function ($r) use ($esc) { return $esc($r['ls_domain_vc']) . ' (' . $esc($r['ls_state_vc']) . ')'; }, array_slice($att, 0, 30))) : 'ninguno');
         if ($boActive) { $h .= ' <span style="color:#e65100;">[emisiones en pausa por backoff]</span>'; }

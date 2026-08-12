@@ -434,7 +434,8 @@ class module_controller extends ctrl_module {
 		$cu     = ctrl_users::GetUserDetail();
 		$domain = (string)$controller->GetControllerRequest('FORM', 'inDomain');
 		$on     = $controller->GetControllerRequest('FORM', 'inOn') ? 1 : 0;
-		$q = $zdbh->prepare("SELECT vh_id_pk, vh_le_reissue_ts, vh_custom_ip_vc, vh_custom_ip6_vc FROM x_vhosts
+		$q = $zdbh->prepare("SELECT vh_id_pk, vh_name_vc, vh_acc_fk, vh_type_in, vh_le_wildcard_in, vh_le_extra_sans,
+		                            vh_le_reissue_ts, vh_custom_ip_vc, vh_custom_ip6_vc FROM x_vhosts
 		                     WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_type_in=1 AND vh_deleted_ts IS NULL");
 		$q->execute(array(':d' => $domain, ':u' => (int)$cu['userid']));
 		$vh = $q->fetch(PDO::FETCH_ASSOC);
@@ -444,18 +445,22 @@ class module_controller extends ctrl_module {
 			$zdbh->prepare("UPDATE x_vhosts SET vh_le_wildcard_in=:w WHERE vh_id_pk=:id")->execute(array(':w' => $on, ':id' => (int)$vh['vh_id_pk']));
 			if ($on) {
 				$last = (int)($vh['vh_le_reissue_ts'] ?? 0);
-				if ($last > 0 && $last <= time() && (time() - $last) < 48 * 3600) {
-					# Cooldown activo (LE: 5 certs idénticos/7 días -> espaciado mínimo ~34h; usamos 48h).
-					# PROGRAMAR la reemisión para cuando expire: vh_le_reissue_ts con instante FUTURO; el
-					# daemon la ejecuta al llegar el momento (OnDaemonHour: reissueReq <= time()). Así el
-					# wildcard se emite solo, sin que el usuario tenga que volver a pulsar nada.
-					$when = $last + 48 * 3600;
-					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
-					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ya hubo una (re)emisión reciente: *.' . htmlspecialchars($domain) . ' se emitirá automáticamente a partir del ' . gmdate('Y-m-d H:i', $when) . ' UTC (cooldown de 48h por el límite de Let\'s Encrypt de 5 certificados idénticos cada 7 días).');
-				} elseif ($last > time()) {
+				if ($last > time()) {
 					$h = max(1, (int)ceil(($last - time()) / 3600));
-					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ya hay una reemisión programada; *.' . htmlspecialchars($domain) . ' se emitirá en ~' . $h . ' h (cooldown de Let\'s Encrypt).');
-				} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
+					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ya hay una reemisión programada; *.' . htmlspecialchars($domain) . ' se emitirá en ~' . $h . ' h (queda en cola).');
+				} else {
+					# Cooldown por HISTORIAL (LE: 5 certs por set exacto/7 días). Con wildcard ON el set
+					# cambia (*.dom+dom+alias) y tiene cupo propio: si ese set no agotó el cupo, emisión
+					# inmediata aunque haya certs recientes con OTRO set (p.ej. el primer cert del dominio).
+					$vhPros = $vh;
+					$vhPros['vh_le_wildcard_in'] = 1;
+					$when = self::leCooldownUntil(self::prospectiveLeNames($vhPros));
+					if ($when !== null && $when > time()) {
+						# Cupo agotado: PROGRAMAR la reemisión para cuando se libere (ts FUTURO; el daemon
+						# la ejecuta al llegar el momento). El usuario lo ve "En cola" en su lista.
+						$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
+						$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Let\'s Encrypt ya emitió 5 certificados con ese mismo conjunto de nombres en 7 días: *.' . htmlspecialchars($domain) . ' se emitirá automáticamente a partir del ' . gmdate('Y-m-d H:i', $when) . ' UTC (queda en cola).');
+					} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
 					$_SESSION['sencrypt_flash'] = array('ok', 'Wildcard activado para ' . htmlspecialchars($domain) . '. Ajusta el DNS del dominio a este servidor para que el daemon lo emita (validación DNS-01).');
 				} else {
 					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")->execute(array(':t' => time(), ':id' => (int)$vh['vh_id_pk']));
@@ -529,18 +534,137 @@ class module_controller extends ctrl_module {
 		return false;
 	}
 
+	# ===== Cooldown por historial de emisiones (límite LE: 5 certs por set exacto de identificadores/7d)
+
+	# Normaliza un set de nombres (SAN) como Let's Encrypt aplica el límite de "set EXACTO de
+	# identificadores": minúsculas, sin duplicados y ordenado (el orden en la orden ACME no importa).
+	# MISMO algoritmo en leLogIssue/leSeedHistory para que los hashes coincidan.
+	static function leNormalizeSet(array $names) {
+		$out = array();
+		foreach ($names as $n) {
+			$n = strtolower(trim((string)$n));
+			if ($n !== '' && !in_array($n, $out, true)) { $out[] = $n; }
+		}
+		sort($out);
+		return implode(',', $out);
+	}
+
+	# Nombres (SAN) que el daemon firmaría AHORA para un vhost (fuente única de verdad compartida con
+	# OnDaemonHour.hook.php, que firma exactamente este set): subdominio -> solo el subdominio;
+	# wildcard -> *.dom + dom + alias elegibles; raíz -> dom + www + SANs extra + alias elegibles.
+	static function prospectiveLeNames(array $vh) {
+		$domain = strtolower((string)$vh['vh_name_vc']);
+		$uid    = (int)$vh['vh_acc_fk'];
+		if ((int)($vh['vh_type_in'] ?? 1) === 2) { return array($domain); }
+		if ((int)($vh['vh_le_wildcard_in'] ?? 0) === 1) {
+			$names = array('*.' . $domain, $domain);
+			foreach (self::getEligibleAliases($domain, $uid) as $a) { if (!in_array($a, $names, true)) { $names[] = $a; } }
+			return $names;
+		}
+		$names = array($domain, 'www.' . $domain);
+		$stored = array_filter(array_map('trim', explode(',', strtolower((string)($vh['vh_le_extra_sans'] ?? '')))));
+		if (!empty($stored)) {
+			$eligible = self::getEligibleSubdomains($domain, $uid);
+			foreach ($stored as $s) { if ($s !== '' && in_array($s, $eligible, true) && !in_array($s, $names, true)) { $names[] = $s; } }
+		}
+		foreach (self::getEligibleAliases($domain, $uid) as $a) { if (!in_array($a, $names, true)) { $names[] = $a; } }
+		return $names;
+	}
+
+	# Cooldown basado en el límite REAL de Let's Encrypt (5 certificados por set EXACTO de
+	# identificadores / 7 días): cuenta los certs que ESTE servidor emitió para el mismo set en los
+	# últimos 7 días (x_le_issue_log, que rellena el daemon en cada emisión y siembra con el cert
+	# vigente). Devuelve NULL si se puede emitir YA (cupo < 5), o el ts UNIX a partir del cual se
+	# podrá (cuando el cert más antiguo del set salga de la ventana de 7 días). Sustituye a la antigua
+	# guarda plana de 48h: con pocas emisiones recientes para el set, la reemisión es inmediata (p.ej.
+	# dominio recién creado con su primer cert: computa 1 de 5 y no bloquea; y el wildcard es OTRO set
+	# exacto con cupo propio).
+	static function leCooldownUntil(array $names) {
+		global $zdbh;
+		try {
+			$q = $zdbh->prepare("SELECT li_issued_ts FROM x_le_issue_log
+			                      WHERE li_set_hash_vc=:h AND li_env_vc=:e AND li_issued_ts>:w
+			                      ORDER BY li_issued_ts ASC");
+			$q->execute(array(':h' => md5(self::leNormalizeSet($names)),
+			                  ':e' => (ctrl_options::GetSystemOption('le_staging') === 'true') ? 'staging' : 'production',
+			                  ':w' => time() - 7 * 86400));
+			$rows = $q->fetchAll(PDO::FETCH_COLUMN);
+		} catch (\Exception $e) { return null; } // tabla aún no creada (migración pendiente): sin cooldown
+		if (count($rows) < 5) { return null; }
+		return ((int)$rows[0]) + 7 * 86400;
+	}
+
+	# Registra un evento de emisión (lo llama el daemon tras cada signDomains correcto) y purga filas
+	# de >8 días. Alimenta el historial que consulta leCooldownUntil().
+	static function leLogIssue($vhostFk, $domain, array $names) {
+		global $zdbh;
+		try {
+			$set = self::leNormalizeSet($names);
+			$zdbh->prepare("INSERT INTO x_le_issue_log (li_vhost_fk, li_domain_vc, li_set_hash_vc, li_set_tx, li_issued_ts, li_env_vc)
+			                VALUES (:v,:d,:h,:s,:t,:e)")
+			     ->execute(array(':v' => (int)$vhostFk, ':d' => strtolower((string)$domain), ':h' => md5($set), ':s' => $set,
+			                     ':t' => time(),
+			                     ':e' => (ctrl_options::GetSystemOption('le_staging') === 'true') ? 'staging' : 'production'));
+			$zdbh->exec("DELETE FROM x_le_issue_log WHERE li_issued_ts < " . (time() - 8 * 86400));
+		} catch (\Exception $e) { /* tabla aún no creada (migración pendiente): no bloquear el daemon */ }
+	}
+
+	# Siembra el historial con el cert VIGENTE (una fila por vhost, solo la primera vez): sin esto, los
+	# certs emitidos antes de existir esta función no computarían contra el cupo de 5/set/7d.
+	# Idempotente: solo inserta si el vhost aún no tiene ninguna fila.
+	static function leSeedHistory($vhostFk, $domain, $certfile) {
+		global $zdbh;
+		if (!is_file($certfile)) { return; }
+		try {
+			$q = $zdbh->prepare("SELECT COUNT(*) FROM x_le_issue_log WHERE li_vhost_fk=:v");
+			$q->execute(array(':v' => (int)$vhostFk));
+			if ((int)$q->fetchColumn() > 0) { return; }
+			$cd = @openssl_x509_parse(@file_get_contents($certfile));
+			if (!is_array($cd) || empty($cd['extensions']['subjectAltName'])) { return; }
+			$names = array();
+			foreach (explode(',', $cd['extensions']['subjectAltName']) as $s) {
+				$s = trim(preg_replace('/^DNS:/i', '', trim($s)));
+				if ($s !== '') { $names[] = $s; }
+			}
+			if (empty($names)) { return; }
+			$set = self::leNormalizeSet($names);
+			$zdbh->prepare("INSERT INTO x_le_issue_log (li_vhost_fk, li_domain_vc, li_set_hash_vc, li_set_tx, li_issued_ts, li_env_vc)
+			                VALUES (:v,:d,:h,:s,:t,:e)")
+			     ->execute(array(':v' => (int)$vhostFk, ':d' => strtolower((string)$domain), ':h' => md5($set), ':s' => $set,
+			                     ':t' => (int)filemtime($certfile),
+			                     ':e' => (ctrl_options::GetSystemOption('le_staging') === 'true') ? 'staging' : 'production'));
+		} catch (\Exception $e) { /* tabla aún no creada (migración pendiente) */ }
+	}
+
+	# Insignia para la lista del usuario: avisa de que hay una (re)emisión EN COLA (programada tras el
+	# cooldown por historial, o solicitada y pendiente del próximo ciclo del daemon). '' si no hay nada.
+	static function queueBadge($rowdomains, $certMtime = null) {
+		$ts = (int)($rowdomains['vh_le_reissue_ts'] ?? 0);
+		if ($ts <= 0) { return ''; }
+		if ($ts > time()) {
+			return '<div class="sencrypt-queue"><i class="bi bi-hourglass-split me-1"></i>En cola: se emitirá a partir del '
+			     . gmdate('Y-m-d H:i', $ts) . ' UTC</div>';
+		}
+		if ($certMtime !== null && $certMtime < $ts) {
+			return '<div class="sencrypt-queue"><i class="bi bi-hourglass-split me-1"></i>Reemisión solicitada: se emitirá en el próximo ciclo del daemon.</div>';
+		}
+		return '';
+	}
+
 	# Fuerza la reemisión del certificado LE de un dominio/subdominio del PROPIO usuario (anti-IDOR),
 	# con guardas para respetar los límites de Let's Encrypt:
-	#   - cooldown de 48h entre reemisiones (el límite es 5 certs idénticos / 7 días -> ~3/semana);
+	#   - cooldown por historial: solo espera si el set exacto ya agotó el cupo de 5 certs/7 días
+	#     (x_le_issue_log); si queda cupo, la reemisión es inmediata;
 	#   - el dominio debe resolver a una IP nuestra (evita 5 fallos de validación / identificador / hora).
-	# No emite aquí: marca vh_le_reissue_ts y el hook OnDaemonDay (root) reemite en el próximo ciclo.
+	# No emite aquí: marca vh_le_reissue_ts y el hook OnDaemonHour (root) reemite en el próximo ciclo.
 	static function doForceReissue() {
 		global $zdbh, $controller;
 		runtime_csfr::Protect();
 		$cu     = ctrl_users::GetUserDetail();
 		$domain = (string)$controller->GetControllerRequest('FORM', 'inDomain');
 
-		$q = $zdbh->prepare("SELECT vh_id_pk, vh_name_vc, vh_custom_ip_vc, vh_custom_ip6_vc, vh_le_reissue_ts
+		$q = $zdbh->prepare("SELECT vh_id_pk, vh_name_vc, vh_acc_fk, vh_type_in, vh_le_wildcard_in, vh_le_extra_sans,
+		                            vh_custom_ip_vc, vh_custom_ip6_vc, vh_le_reissue_ts
 		                     FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL");
 		$q->execute(array(':d' => $domain, ':u' => (int)$cu['userid']));
 		$vh = $q->fetch(PDO::FETCH_ASSOC);
@@ -551,22 +675,27 @@ class module_controller extends ctrl_module {
 			if ($last > time()) {
 				$h = max(1, (int)ceil(($last - time()) / 3600));
 				$_SESSION['sencrypt_flash'] = array('ok',
-					'Ya hay una reemisión programada para ' . htmlspecialchars($domain) . '; se ejecutará en ~' . $h . ' h (cooldown de Let\'s Encrypt).');
-			} elseif ($last > 0 && (time() - $last) < 48 * 3600) {
-				# Programarla al expirar el cooldown en vez de obligar a volver a pulsar (timestamp futuro).
-				$when = $last + 48 * 3600;
-				$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")
-				     ->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
-				$_SESSION['sencrypt_flash'] = array('ok',
-					'Ya solicitaste una reemisión hace poco. Queda programada para el ' . gmdate('Y-m-d H:i', $when) . ' UTC (Let\'s Encrypt limita a 5 certificados idénticos por 7 días).');
-			} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
-				$_SESSION['sencrypt_flash'] = array('err',
-					'El dominio ' . htmlspecialchars($domain) . ' no resuelve por DNS a una IP de este servidor; corrige el DNS antes de reemitir (evita agotar el límite de fallos de validación de Let\'s Encrypt).');
+					'Ya hay una reemisión programada para ' . htmlspecialchars($domain) . '; se ejecutará en ~' . $h . ' h (queda en cola).');
 			} else {
-				$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")
-				     ->execute(array(':t' => time(), ':id' => (int)$vh['vh_id_pk']));
-				$_SESSION['sencrypt_flash'] = array('ok',
-					'Reemisión programada para ' . htmlspecialchars($domain) . '. Se emitirá en el próximo ciclo del daemon.');
+				# Cooldown por HISTORIAL: solo espera si el set exacto que se firmaría ahora ya agotó el
+				# cupo de LE (5 certs idénticos/7 días). Con cupo libre, reemisión inmediata aunque haya
+				# emisiones recientes con OTRO set (p.ej. primer cert del dominio creado hoy).
+				$when = self::leCooldownUntil(self::prospectiveLeNames($vh));
+				if ($when !== null && $when > time()) {
+					# Programarla al liberarse el cupo en vez de obligar a volver a pulsar (ts futuro).
+					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")
+					     ->execute(array(':t' => $when, ':id' => (int)$vh['vh_id_pk']));
+					$_SESSION['sencrypt_flash'] = array('ok',
+						'Let\'s Encrypt ya emitió 5 certificados con ese mismo conjunto de nombres en 7 días. La reemisión de ' . htmlspecialchars($domain) . ' queda en cola y se ejecutará a partir del ' . gmdate('Y-m-d H:i', $when) . ' UTC.');
+				} elseif (!self::domainResolvesToUs($domain, $vh['vh_custom_ip_vc'] ?? '', $vh['vh_custom_ip6_vc'] ?? '')) {
+					$_SESSION['sencrypt_flash'] = array('err',
+						'El dominio ' . htmlspecialchars($domain) . ' no resuelve por DNS a una IP de este servidor; corrige el DNS antes de reemitir (evita agotar el límite de fallos de validación de Let\'s Encrypt).');
+				} else {
+					$zdbh->prepare("UPDATE x_vhosts SET vh_le_reissue_ts=:t WHERE vh_id_pk=:id")
+					     ->execute(array(':t' => time(), ':id' => (int)$vh['vh_id_pk']));
+					$_SESSION['sencrypt_flash'] = array('ok',
+						'Reemisión programada para ' . htmlspecialchars($domain) . '. Se emitirá en el próximo ciclo del daemon.');
+				}
 			}
 		}
 		if (!headers_sent()) { header('location: ./?module=sencrypt&ShowPanel=letsencrypt'); exit; }
@@ -818,7 +947,7 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ".";
 					}
 							
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL );
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => $Downloadbutton, 'Revoke_AC' => NULL, 'Force_AC' => self::ForceToggle($rowdomains) , 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Queue_AC' => self::queueBadge($rowdomains), 'Sans_AC' => NULL );
 					
 				# If Letsencrypt cert	
 				} elseif ( is_file(ctrl_options::GetSystemOption('hosted_dir') . $currentuser["username"] . "/ssl/sencrypt/letsencrypt/" . $rowdomains['vh_name_vc'] . "/cert.pem" ) ) {
@@ -837,6 +966,7 @@ class module_controller extends ctrl_module {
 					</form>';
 					
 					$certinfo = openssl_x509_parse(file_get_contents(ctrl_options::GetSystemOption('hosted_dir') . $currentuser["username"] . "/ssl/sencrypt/letsencrypt/" . $rowdomains['vh_name_vc'] . "/cert.pem"));
+					$certMtime = @filemtime(ctrl_options::GetSystemOption('hosted_dir') . $currentuser["username"] . "/ssl/sencrypt/letsencrypt/" . $rowdomains['vh_name_vc'] . "/cert.pem");
 					$validTo = date('Y-m-d', $certinfo["validTo_time_t"]);
 					$now = time();
 					$your_date = strtotime("$validTo");
@@ -851,18 +981,18 @@ class module_controller extends ctrl_module {
 						$days = ui_language::translate("Expiry in") . ' ' . $day . ' ' . ui_language::translate("days") . ' - ' . ui_language::translate("Auto-renewal in") . ' ' . $reNewDay . ' ' . ui_language::translate("days") . '.';
 					}
 					
-					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains), 'Sans_AC' => self::VhostSansEditor($rowdomains));
+					$res[] = array('Domain_AC' => $rowdomains['vh_name_vc'], 'Names_AC' => self::certSans($certinfo), 'Button_AC' => $button, 'Vendor_AC' => $sslvendor, 'Days_AC' =>  $days, 'Download_AC' => NULL, 'Revoke_AC' => $RevokeButton, 'Force_AC' => self::ForceToggle($rowdomains), 'Reissue_AC' => self::ReissueButton($rowdomains), 'Wildcard_AC' => self::WildcardButton($rowdomains), 'Queue_AC' => self::queueBadge($rowdomains, $certMtime), 'Sans_AC' => self::VhostSansEditor($rowdomains));
 					
 				}
 			}
 			if (!$res)
 			{
-				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
+				$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Queue_AC' => NULL, 'Sans_AC' => NULL);
 			}
 
 		} else {		
 								
-			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Sans_AC' => NULL);
+			$res[] = array('Domain_AC' => ui_language::translate("No Active Domain Certificates"), 'Names_AC' => NULL, 'Button_AC' => NULL, 'Vendor_AC' => NULL, 'Days_AC' =>  NULL, 'Download_AC' => NULL, 'Revoke_AC' => NULL, 'Force_AC' => NULL, 'Reissue_AC' => NULL, 'Wildcard_AC' => NULL, 'Queue_AC' => NULL, 'Sans_AC' => NULL);
 			
 		}
 		
