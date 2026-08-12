@@ -759,6 +759,7 @@ CREATE TABLE `x_vhosts` (
   `vh_id_pk` int(6) unsigned NOT NULL AUTO_INCREMENT,
   `vh_acc_fk` int(6) DEFAULT NULL,
   `vh_name_vc` varchar(255) CHARACTER SET latin1 COLLATE latin1_general_ci DEFAULT NULL,
+  `vh_aliases_vc` varchar(500) DEFAULT NULL COMMENT 'Alias (ServerAlias) del dominio, separados por espacios',
   `vh_directory_vc` varchar(255) CHARACTER SET latin1 COLLATE latin1_general_ci DEFAULT NULL,
   `vh_type_in` int(1) DEFAULT 1,
   `vh_active_in` int(1) DEFAULT 0,

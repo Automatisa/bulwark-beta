@@ -492,6 +492,18 @@ function WriteVhostConfigFile() {
 	
 	# Check if domain or subdomain to see if we add an alias with 'www'
 	$serveralias = ( $rowvhost['vh_type_in'] == 2 ) ? '' : " www." . $rowvhost['vh_name_vc'];
+
+	# Alias extra (ServerAlias) configurados en el módulo Domains (x_vhosts.vh_aliases_vc).
+	# Se re-validan aquí (defensa en profundidad: el valor acaba en el httpd-vhosts.conf).
+	if ($rowvhost['vh_type_in'] == 1 && !empty($rowvhost['vh_aliases_vc'])) {
+		foreach (preg_split('/[\s,]+/', strtolower((string)$rowvhost['vh_aliases_vc'])) as $_alias) {
+			$_alias = trim($_alias);
+			if ($_alias === '') continue;
+			if (!preg_match('/^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/', $_alias)) continue;
+			if (strpos($_alias, 'www.') === 0) continue;
+			$serveralias .= ' ' . $_alias;
+		}
+	}
 	
 	# Check if site is ssl enabled to pevent duplicate Port 443
 	$vhostPort = ( fs_director::CheckForEmptyValue($rowvhost['vh_custom_port_in']) ) ? $VHostDefaultPort : $rowvhost['vh_custom_port_in'];

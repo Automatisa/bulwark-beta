@@ -36,6 +36,7 @@ class module_controller extends ctrl_module
     static $nosub;
     static $alreadyexists;
     static $badname;
+    static $badalias;
     static $blank;
     static $ok;
 
@@ -68,6 +69,7 @@ class module_controller extends ctrl_module
                 array_push($res, array(
                     'uid' => $rowdomains['vh_acc_fk'],
                     'name' => $rowdomains['vh_name_vc'],
+                    'aliases' => (string)($rowdomains['vh_aliases_vc'] ?? ''),
                     'directory' => $rowdomains['vh_directory_vc'],
                     'active' => $rowdomains['vh_active_in'],
                     'enabled' => $rowdomains['vh_enabled_in'],
@@ -315,11 +317,18 @@ class module_controller extends ctrl_module
         if (!fs_director::CheckForEmptyValue($domains)) {
             foreach ($domains as $row) {
                 $status = self::getDomainStatusHTML($row['active'], $row['enabled'], $row['id']);
+                $aliasesHtml = '';
+                if (!empty($row['aliases'])) {
+                    $aliasesHtml = '<br><small style="color:#666"><i class="bi bi-share me-1"></i>'
+                        . ui_language::translate('Alias') . ': '
+                        . htmlspecialchars($row['aliases'], ENT_QUOTES) . '</small>';
+                }
                 $res[] = array('name' => $row['name'],
                     'directory' => $row['directory'],
                     'active' => $row['active'],
                     'enabled' => $row['enabled'],
                     'status' => $status,
+                    'aliaseshtml' => $aliasesHtml,
                     'id' => $row['id']);
             }
             return $res;
@@ -498,6 +507,8 @@ class module_controller extends ctrl_module
             . ' class="btn btn-info btn-sm">PHP</a> '
             . '<a href="./?module=' . htmlspecialchars($mod, ENT_QUOTES) . '&show=IpSettings&id=' . (int)$id . '"'
             . ' class="btn btn-secondary btn-sm"><i class="bi bi-hdd-network me-1"></i>IP</a> '
+            . '<a href="./?module=' . htmlspecialchars($mod, ENT_QUOTES) . '&show=AliasSettings&id=' . (int)$id . '"'
+            . ' class="btn btn-primary btn-sm"><i class="bi bi-share me-1"></i>' . ui_language::translate('Alias') . '</a> '
             . '<button class="delete btn btn-danger btn-sm" type="submit"'
             . ' name="inDelete_' . (int)$id . '" value="inDelete_' . (int)$id . '"><i class="bi bi-trash me-1"></i>'
             . ui_language::translate('Delete') . '</button>'
@@ -598,10 +609,10 @@ class module_controller extends ctrl_module
     }
 
     /** Vista principal (lista + crear): solo cuando NO se está en una vista de detalle
-     *  (ajustes PHP, asignación de IP, o borrado). Así el detalle muestra solo ese dominio. */
+     *  (ajustes PHP, asignación de IP, alias, o borrado). Así el detalle muestra solo ese dominio. */
     static function getisDomainMain()
     {
-        return !self::getisPhpSettings() && !self::getisIpSettings() && !self::getisDeleteDomain();
+        return !self::getisPhpSettings() && !self::getisIpSettings() && !self::getisAliasSettings() && !self::getisDeleteDomain();
     }
 
     // --- Vista de asignación de IP (show=IpSettings) -------------------------------------------
@@ -1309,6 +1320,132 @@ class module_controller extends ctrl_module
         return $h;
     }
 
+    // -----------------------------------------------------------------------
+    // Alias de dominio (Apache ServerAlias) — x_vhosts.vh_aliases_vc
+    // -----------------------------------------------------------------------
+
+    private static $aliasSettingsCache = null;
+
+    private static function loadAliasSettings()
+    {
+        if (self::$aliasSettingsCache !== null) return self::$aliasSettingsCache;
+        global $controller, $zdbh;
+        $urlvars = $controller->GetAllControllerRequests('URL');
+        if (!isset($urlvars['show']) || $urlvars['show'] !== 'AliasSettings' || !isset($urlvars['id'])) {
+            self::$aliasSettingsCache = false;
+            return false;
+        }
+        $vhostid     = (int)$urlvars['id'];
+        $currentuser = ctrl_users::GetUserDetail();
+        $chk = $zdbh->prepare("SELECT vh_name_vc, vh_aliases_vc FROM x_vhosts
+                                WHERE vh_id_pk=:id AND vh_acc_fk=:uid AND vh_deleted_ts IS NULL AND vh_type_in=1");
+        $chk->execute([':id' => $vhostid, ':uid' => $currentuser['userid']]);
+        $vhost = $chk->fetch(PDO::FETCH_ASSOC);
+        if (!$vhost) { self::$aliasSettingsCache = false; return false; }
+        self::$aliasSettingsCache = [
+            'domain_name' => $vhost['vh_name_vc'],
+            'vhost_id'    => $vhostid,
+            'aliases'     => (string)($vhost['vh_aliases_vc'] ?? ''),
+        ];
+        return self::$aliasSettingsCache;
+    }
+
+    static function getisAliasSettings()
+    {
+        return self::loadAliasSettings() !== false;
+    }
+
+    static function getAliasDomainName()
+    {
+        $s = self::loadAliasSettings();
+        return $s ? htmlspecialchars($s['domain_name'], ENT_QUOTES) : '';
+    }
+
+    static function getAliasVhostId()
+    {
+        $s = self::loadAliasSettings();
+        return $s ? (int)$s['vhost_id'] : 0;
+    }
+
+    static function getAliasesValue()
+    {
+        $s = self::loadAliasSettings();
+        return $s ? htmlspecialchars($s['aliases'], ENT_QUOTES) : '';
+    }
+
+    /**
+     * Parsea y valida una lista de alias (separados por espacios/comas/saltos de línea).
+     * Devuelve array de alias normalizados, o false si alguno no es un hostname válido.
+     * Se admite el comodín "*.dominio.com" (función nativa de Apache ServerAlias).
+     */
+    private static function parseDomainAliases(string $raw)
+    {
+        $raw = strtolower(str_replace(["\r", "\t", ";"], ' ', $raw));
+        $tokens = preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
+        $out = array();
+        foreach ($tokens as $t) {
+            $t = trim($t, '.');
+            if ($t === '' || $t === '*') return false;
+            if (!preg_match('/^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/', $t)) return false;
+            if (!in_array($t, $out, true)) $out[] = $t;
+        }
+        return $out;
+    }
+
+    static function doSaveDomainAliases()
+    {
+        global $controller;
+        runtime_csfr::Protect();
+        $currentuser = ctrl_users::GetUserDetail();
+        $formvars = $controller->GetAllControllerRequests('FORM');
+        $vhostid  = (int)($formvars['inVhostId'] ?? 0);
+        if (self::ExecuteSaveDomainAliases($vhostid, $currentuser['userid'], (string)($formvars['inAliases'] ?? ''))) {
+            self::$ok = true;
+            return true;
+        }
+        return false;
+    }
+
+    static function ExecuteSaveDomainAliases($vhostid, $uid, $aliasesRaw)
+    {
+        global $zdbh;
+        // Solo el propietario del vhost, y solo dominios (tipo 1).
+        $chk = $zdbh->prepare("SELECT vh_id_pk, vh_name_vc FROM x_vhosts
+                                WHERE vh_id_pk=:id AND vh_acc_fk=:uid AND vh_deleted_ts IS NULL AND vh_type_in=1");
+        $chk->execute([':id' => $vhostid, ':uid' => $uid]);
+        $vhost = $chk->fetch(PDO::FETCH_ASSOC);
+        if (!$vhost) return false;
+        $domain = strtolower((string)$vhost['vh_name_vc']);
+
+        $aliases = self::parseDomainAliases((string)$aliasesRaw);
+        if ($aliases === false || count($aliases) > 10) { self::$badalias = true; return false; }
+
+        foreach ($aliases as $a) {
+            // El "www." lo añade Apache automáticamente; el propio dominio tampoco es un alias.
+            if (strpos($a, 'www.') === 0 || $a === $domain) { self::$badalias = true; return false; }
+            // No puede coincidir con un dominio/subdominio/parked ya dado de alta en el servidor...
+            $q = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=:n AND vh_deleted_ts IS NULL");
+            $q->execute([':n' => $a]);
+            if ((int)$q->fetchColumn() > 0) { self::$alreadyexists = true; return false; }
+            // ...ni con un alias de otro vhost.
+            $q2 = $zdbh->prepare("SELECT vh_aliases_vc FROM x_vhosts
+                                   WHERE vh_deleted_ts IS NULL AND vh_aliases_vc IS NOT NULL
+                                     AND vh_aliases_vc <> '' AND vh_id_pk <> :id");
+            $q2->execute([':id' => $vhostid]);
+            while ($other = $q2->fetch(PDO::FETCH_ASSOC)) {
+                $otherAliases = preg_split('/[\s,]+/', strtolower((string)$other['vh_aliases_vc']), -1, PREG_SPLIT_NO_EMPTY);
+                if (in_array($a, $otherAliases, true)) { self::$alreadyexists = true; return false; }
+            }
+        }
+
+        $value = implode(' ', $aliases);
+        if ($value === '') $value = null;
+        $upd = $zdbh->prepare("UPDATE x_vhosts SET vh_aliases_vc=:v WHERE vh_id_pk=:id");
+        $upd->execute([':v' => $value, ':id' => $vhostid]);
+        self::SetWriteApacheConfigTrue();
+        return true;
+    }
+
     static function getResult()
     {
         if (!fs_director::CheckForEmptyValue(self::$blank)) {
@@ -1325,6 +1462,9 @@ class module_controller extends ctrl_module
         }
         if (!fs_director::CheckForEmptyValue(self::$error)) {
             return ui_sysmessage::shout(ui_language::translate("Please remove 'www'. The 'www' will automatically work with all Domains / Subdomains."), "zannounceerror");
+        }
+        if (!fs_director::CheckForEmptyValue(self::$badalias)) {
+            return ui_sysmessage::shout(ui_language::translate("One or more aliases are not valid. Use hostnames like 'midominio.es' or '*.midominio.es' (without 'www'), separated by spaces or commas. Maximum 10 aliases."), "zannounceerror");
         }
         if (!fs_director::CheckForEmptyValue(self::$writeerror)) {
             return ui_sysmessage::shout(ui_language::translate("There was a problem writting to the virtual host container file. Please contact your administrator and report this error. Your domain will not function until this error is corrected."), "zannounceerror");
