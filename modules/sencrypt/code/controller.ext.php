@@ -597,6 +597,42 @@ class module_controller extends ctrl_module {
 		return $out;
 	}
 
+	# Alias del dominio (Domains -> ServerAlias) que PUEDEN entrar en el cert como SAN. Solo los que
+	# pertenecen a una zona que gestiona el panel (dominio registrado vh_type_in=1, sufijo más largo
+	# del alias) Y es del MISMO usuario: así el panel puede provisionar el reto DNS-01
+	# (_acme-challenge TXT) en la zona. Los alias externos (DNS en otro proveedor) se EXCLUYEN para
+	# que la orden ACME no falle (rompería la renovación de TODO el cert). Se admiten alias comodín
+	# (*.dominio) si la zona base está gestionada. Anti-IDOR: solo el vhost del usuario y solo zonas
+	# del usuario. Devuelve array de alias (FQDN, puede incluir prefijo *.).
+	static function getEligibleAliases($domain, $uid) {
+		global $zdbh;
+		$domain = strtolower($domain);
+		$q = $zdbh->prepare("SELECT vh_aliases_vc FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in=1");
+		$q->execute(array(':d' => $domain, ':u' => (int)$uid));
+		$aliases = array_filter(array_map('trim', preg_split('/[\s,]+/', strtolower((string)$q->fetchColumn()), -1, PREG_SPLIT_NO_EMPTY)));
+		if (empty($aliases)) { return array(); }
+		$panelDom = strtolower((string)ctrl_options::GetSystemOption('bulwark_domain'));
+		# Zonas gestionadas del usuario, ordenadas por longitud DESC para el sufijo más largo (como
+		# Dns01FindZone): si la zona que manda es la del panel, el alias NO es elegible.
+		$zq = $zdbh->prepare("SELECT vh_name_vc FROM x_vhosts WHERE vh_type_in=1 AND vh_acc_fk=:u AND vh_deleted_ts IS NULL");
+		$zq->execute(array(':u' => (int)$uid));
+		$zoneNames = array_map('strtolower', $zq->fetchAll(PDO::FETCH_COLUMN));
+		usort($zoneNames, function($a, $b) { return strlen($b) - strlen($a); });
+		$out = array();
+		foreach ($aliases as $a) {
+			$base = (strpos($a, '*.') === 0) ? substr($a, 2) : $a;
+			if ($base === '' || $base === $domain || $base === 'www.' . $domain || $base === $panelDom) { continue; }
+			foreach ($zoneNames as $z) {
+				if ($base === $z || substr($base, -(strlen($z) + 1)) === '.' . $z) {
+					if ($z !== $panelDom && !in_array($a, $out, true)) { $out[] = $a; }
+					break; // solo manda el sufijo más largo
+				}
+			}
+		}
+		sort($out);
+		return $out;
+	}
+
 	# Botón por fila: abre la HOJA de gestión de nombres extra (tabla) para ese dominio.
 	static function VhostSansEditor($rowdomains) {
 		if ((int)($rowdomains['vh_type_in'] ?? 0) === 2) { return ''; }          // subdominio: cert propio
@@ -641,7 +677,8 @@ class module_controller extends ctrl_module {
 		$d = self::sansDomainForUser();
 		if (!$d) { return ''; }
 		return ui_language::translate('Only subdomains that exist in DNS and do not already have their own certificate are listed.')
-			. ' ' . ui_language::translate('If you remove one from DNS it is dropped from the certificate automatically on the next renewal.');
+			. ' ' . ui_language::translate('If you remove one from DNS it is dropped from the certificate automatically on the next renewal.')
+			. ' ' . ui_language::translate('Domain aliases (Domains module) are added to the certificate automatically when the panel manages their DNS zone.');
 	}
 
 	# Filas de la tabla de la hoja: subdominios elegibles + estado (marcado si ya está en el cert).
@@ -1778,8 +1815,13 @@ class module_controller extends ctrl_module {
 
 				} else {
 
-					# Dominio raíz: el dominio y www.
-					$le->signDomains(array($domain, 'www.'. $domain), false, '', 'dns-01', $dns01Prov, $dns01Clean);
+					# Dominio raíz: el dominio, www y los ALIAS elegibles del vhost (Domains ->
+					# ServerAlias): solo los de zona gestionada por el panel (ver getEligibleAliases).
+					$names = array($domain, 'www.'. $domain);
+					foreach (self::getEligibleAliases($domain, $userid) as $alias) {
+						if (!in_array($alias, $names, true)) { $names[] = $alias; }
+					}
+					$le->signDomains($names, false, '', 'dns-01', $dns01Prov, $dns01Clean);
 				}
 			}
 		}

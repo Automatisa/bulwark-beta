@@ -334,10 +334,15 @@ function renewCertificates() {
 
 					if ((int)($sslVhost['vh_le_wildcard_in'] ?? 0) === 1 && $domainType != 2) {
 						// WILDCARD: un solo cert *.dominio + dominio via DNS-01 (reto _acme-challenge). Cubre todos
-						// los subdominios en un cert -> esquiva el limite 50 certs/dominio/7d.
+						// los subdominios en un cert -> esquiva el limite 50 certs/dominio/7d. Los ALIAS del vhost
+						// elegibles (zona gestionada por el panel) se añaden como SAN: el wildcard NO los cubre.
 						require_once 'modules/sencrypt/code/controller.ext.php';
-						echo "   WILDCARD (DNS-01): emitiendo *.".$domain." + ".$domain.fs_filehandler::NewLine();
-						$le->signDomains(array('*.'.$domain, $domain), false, $replaces, 'dns-01',
+						$wcNames = array('*.'.$domain, $domain);
+						foreach (module_controller::getEligibleAliases($domain, (int)$sslVhost['vh_acc_fk']) as $alias) {
+							if (!in_array($alias, $wcNames, true)) { $wcNames[] = $alias; }
+						}
+						echo "   WILDCARD (DNS-01): emitiendo ".implode(' + ', $wcNames).fs_filehandler::NewLine();
+						$le->signDomains($wcNames, false, $replaces, 'dns-01',
 							array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
 							// Cablear los subdominios del dominio para que sirvan este cert wildcard.
 							sencrypt_wire_wildcard_subdomains($sslVhost);
@@ -352,6 +357,10 @@ function renewCertificates() {
 						// -> si el usuario borra el registro del DNS, el SAN se cae solo del cert en la
 						// siguiente emisión/renovación (no se sigue emitiendo ni renovando). Con extras se
 						// emite por DNS-01 (los subdominios no sirven el reto HTTP-01).
+						// Además se añaden los ALIAS del vhost (Domains -> ServerAlias) que sean ELEGIBLES
+						// (getEligibleAliases): solo los de zona DNS gestionada por el panel y del mismo
+						// usuario; los externos se omiten para no romper la orden ACME. Si se quita un
+						// alias en Domains, desaparece del cert en la siguiente renovación.
 						require_once 'modules/sencrypt/code/controller.ext.php';
 						$names = array($domain, 'www.'.$domain);
 						$stored = array_filter(array_map('trim', explode(',', strtolower((string)($sslVhost['vh_le_extra_sans'] ?? '')))));
@@ -361,8 +370,11 @@ function renewCertificates() {
 								if ($s !== '' && in_array($s, $eligible, true) && !in_array($s, $names, true)) { $names[] = $s; }
 							}
 						}
+						foreach (module_controller::getEligibleAliases($domain, (int)$sslVhost['vh_acc_fk']) as $alias) {
+							if (!in_array($alias, $names, true)) { $names[] = $alias; }
+						}
 						if (count($names) > 2) {
-							echo "   SAN extra del usuario (DNS-01): ".implode(', ', array_slice($names, 2)).fs_filehandler::NewLine();
+							echo "   Nombres extra (DNS-01): ".implode(', ', array_slice($names, 2)).fs_filehandler::NewLine();
 							$le->signDomains($names, false, $replaces, 'dns-01',
 								array('module_controller','Dns01Provision'), array('module_controller','Dns01Cleanup'));
 						} else {
