@@ -5,9 +5,12 @@
  *  - Lee el trabajo y los ajustes de la BD (PDO ligero, sin bootstrap del panel).
  *  - Reconstruye los passfiles de imapsync desde el passfile del trabajo (línea1=origen, línea2=destino).
  *  - Corre `timeout T nice -n N imapsync ...` por proc_open (array argv -> SIN shell), con throttles.
- *  - Como imapsync es INCREMENTAL: si expira el timeout (rc 124) -> 'partial' y se reencola (queued)
- *    para continuar en la siguiente pasada; rc 0 -> 'done'; otro -> 'error'.
- *  - Acumula mensajes/bytes transferidos. Borra los passfiles temporales y el pidfile al terminar.
+ *  - Como imapsync es INCREMENTAL: si expira el timeout (rc 124) -> se reencola (queued) para
+ *    continuar en la siguiente pasada; rc 0 -> 'done'; rc 113 (OVERQUOTA: buzón destino lleno) ->
+ *    acumula lo transferido y se reencola, abortando con error claro si una tanda entera no avanza;
+ *    otro rc -> 'error'.
+ *  - Acumula mensajes/bytes transferidos SIEMPRE (también en las tandas que acaban en error: lo
+ *    copiado antes de fallar queda copiado). Borra los passfiles temporales y el pidfile al terminar.
  */
 $jid = (int)($argv[1] ?? 0);
 if ($jid <= 0) { exit(1); }
@@ -97,9 +100,21 @@ if ($rc === 124) {
 } elseif ($rc === 0) {
     $pdo->exec("UPDATE x_imapsync_jobs SET ij_status_vc='done', ij_msgs_in=ij_msgs_in+" . $msgs . ", ij_bytes_bi=ij_bytes_bi+" . $bytes . ", ij_updated_ts=" . time() . " WHERE ij_id_pk=" . $jid . " AND ij_status_vc='running'");
     @unlink($j['ij_passfile_vc']); // ya no hace falta guardar las contraseñas
+} elseif ($rc === 113) {
+    // EXIT_OVERQUOTA: buzón destino lleno. imapsync es incremental: lo ya copiado queda copiado,
+    // así que acumulamos SIEMPRE el progreso de la tanda y reencolamos para seguir en cuanto haya
+    // sitio (el usuario/amplía cuota o libera espacio). Si una tanda entera no transfiere nada
+    // (la cuota sigue llena), abortamos con un mensaje claro en vez de reintentar en bucle.
+    if ($msgs === 0 && (int)$j['ij_runs_in'] >= 2) {
+        $pdo->exec("UPDATE x_imapsync_jobs SET ij_status_vc='error', ij_error_tx='cuota del buzón destino llena: libera espacio (o amplía la cuota) y vuelve a encolar la migración; continuará donde se quedó', ij_msgs_in=ij_msgs_in+" . $msgs . ", ij_bytes_bi=ij_bytes_bi+" . $bytes . ", ij_updated_ts=" . time() . " WHERE ij_id_pk=" . $jid . " AND ij_status_vc='running'");
+        @unlink($j['ij_passfile_vc']);
+    } else {
+        $pdo->exec("UPDATE x_imapsync_jobs SET ij_status_vc='queued', ij_msgs_in=ij_msgs_in+" . $msgs . ", ij_bytes_bi=ij_bytes_bi+" . $bytes . ", ij_updated_ts=" . time() . " WHERE ij_id_pk=" . $jid . " AND ij_status_vc='running'");
+    }
 } else {
     $tail = $txt !== false ? substr($txt, -400) : '';
-    $st = $pdo->prepare("UPDATE x_imapsync_jobs SET ij_status_vc='error', ij_error_tx=?, ij_updated_ts=" . time() . " WHERE ij_id_pk=" . $jid . " AND ij_status_vc='running'");
+    // La tanda puede haber transferido mensajes antes de fallar: reflejar el progreso siempre.
+    $st = $pdo->prepare("UPDATE x_imapsync_jobs SET ij_status_vc='error', ij_error_tx=?, ij_msgs_in=ij_msgs_in+" . $msgs . ", ij_bytes_bi=ij_bytes_bi+" . $bytes . ", ij_updated_ts=" . time() . " WHERE ij_id_pk=" . $jid . " AND ij_status_vc='running'");
     $st->execute(array("rc=$rc " . $tail));
     @unlink($j['ij_passfile_vc']);
 }
