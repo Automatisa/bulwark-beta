@@ -359,16 +359,17 @@ class ui_templateparser
                         if (!is_dir($cacheFile)) {
                             $time = time() - $deathAfter;
                             if (filemtime($cacheFile) <= $time) {
-                                //Delete cache files
-                                $path = pathinfo($cacheFile);
-                                chdir($path['dirname']);
-                                unlink($path['filename'] . '.cache');
+                                //Delete cache files.
+                                //IMPORTANTE: sin chdir(). $cacheFile ya es una ruta
+                                //absoluta y cambiar el CWD a mitad de petición rompía
+                                //el autoloader (rutas relativas) -> "Class not found"
+                                //y página en blanco en ~1 de cada $deleteCacheChance.
+                                @unlink($cacheFile);
                             }
                         }
                     }
                 }
             }
-            chdir('/');
         }
     }
 

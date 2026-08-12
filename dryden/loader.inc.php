@@ -21,8 +21,14 @@ $class_name = null;
 
 function x__autoload($class_name)
 {
+    // Rutas ABSOLUTAS: el autoloader no debe depender del CWD del proceso.
+    // Otros componentes (p.ej. ui_templateparser::clearOldCache) pueden hacer
+    // chdir() durante la petición; con rutas relativas el primer autoload de
+    // una clase aún no cargada fallaba -> "Class not found" -> página en blanco.
+    $root = dirname(__DIR__);
+
     // Convención principal: a_b_c -> dryden/a/b/c.class.php
-    $path = 'dryden/' . str_replace('_', '/', $class_name) . '.class.php';
+    $path = $root . '/dryden/' . str_replace('_', '/', $class_name) . '.class.php';
     if (file_exists($path)) {
         require_once $path;
         return;
@@ -35,7 +41,7 @@ function x__autoload($class_name)
     for ($i = count($parts) - 1; $i >= 1; $i--) {
         $dir  = implode('/', array_slice($parts, 0, $i));
         $file = implode('_', array_slice($parts, $i));
-        $p = 'dryden/' . $dir . '/' . $file . '.class.php';
+        $p = $root . '/dryden/' . $dir . '/' . $file . '.class.php';
         if (file_exists($p)) {
             require_once $p;
             return;
@@ -50,6 +56,11 @@ spl_autoload_register('x__autoload');
 // requerían a mano y otros lo olvidaban -> "Class privilege not found" -> 500.
 // Al ser una clase core de sistema, se carga aquí una sola vez para todos.
 require_once __DIR__ . '/sys/privilege.class.php';
+
+// runtime_csfr se usa en prácticamente cada petición (formularios y POST de
+// todos los módulos). Se precarga como clase core para que ningún cambio de
+// CWD durante el renderizado pueda dejar un formulario sin su token CSRF.
+require_once __DIR__ . '/runtime/csfr.class.php';
 
 if (isset($_GET['module'])) {
     $CleanModuleName = fs_protector::SanitiseFolderName($_GET['module']);
