@@ -12,6 +12,12 @@ input {
   margin-bottom: 16px;
 }
 
+/* Size field: cancel the generic input margin inside Bootstrap's input-group */
+.input-group > .form-control {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 /* Style the submit button */
 input[type=submit] {
   background-color: #4CAF50;
@@ -136,9 +142,20 @@ input[type=submit] {
 				<div class="table-responsive"><table class="table table-striped">
 				
                 <tr>
-                    <th><: Mailbox size :> (MB):</th>
-                    <td><input type="number" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<& size &>" data-numeric="int" /></td>
-                    <td><small><: available :>: <@ MailboxSpaceFree @> &middot; 1000 MB = 1 GB</small></td>
+                    <th><: Mailbox size :>:</th>
+                    <td colspan="2">
+                        <div class="input-group" style="max-width:220px;">
+                            <input type="number" class="form-control" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<& size &>" data-numeric="int" />
+                            <span class="input-group-text">MB</span>
+                        </div>
+                        <div class="form-text">
+                            <i class="bi bi-hdd me-1"></i><: The mailbox size is discounted from your package disk quota :>.
+                            <: Package disk quota :>: <strong><@ MailboxSpaceQuota @></strong> &middot;
+                            <: reserved by mailboxes :>: <strong><@ MailboxSpaceUsedFmt @></strong> &middot;
+                            <: available for mailboxes :>: <strong><@ MailboxSpaceFree @></strong> &middot;
+                            1000 MB = 1 GB
+                        </div>
+                    </td>
                 </tr>
                 <tr>
                     <th><: Enabled :>:</th>
@@ -225,13 +242,21 @@ input[type=submit] {
 							</tr>
 
 							<tr>
-								<th nowrap="nowrap"><: Mailbox size :> (MB):</th>
-								<td><input type="number" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<@ DefaultMailSize @>" data-numeric="int" /></td>
-								<td><small><: Default :>: <@ DefaultMailSize @> MB &middot; 1000 MB = 1 GB</small></td>
-							</tr>
-							<tr>
-								<th></th>
-								<td colspan="2"><small><: The mailbox size is discounted from your package disk quota :> — <: Disk quota :>: <@ MailboxSpaceQuota @> &middot; <: reserved by mailboxes :>: <@ MailboxSpaceUsedFmt @> &middot; <: available :>: <@ MailboxSpaceFree @></small></td>
+								<th nowrap="nowrap"><: Mailbox size :>:</th>
+								<td colspan="2">
+									<div class="input-group" style="max-width:220px;">
+										<input type="number" class="form-control" name="inSize" id="inSize" min="10" max="10485760" step="1" value="<@ DefaultMailSize @>" data-numeric="int" />
+										<span class="input-group-text">MB</span>
+									</div>
+									<div class="form-text">
+										<i class="bi bi-hdd me-1"></i><: Default :>: <strong><@ DefaultMailSize @> MB</strong> &middot;
+										<: The mailbox size is discounted from your package disk quota :>.
+										<: Package disk quota :>: <strong><@ MailboxSpaceQuota @></strong> &middot;
+										<: reserved by mailboxes :>: <strong><@ MailboxSpaceUsedFmt @></strong> &middot;
+										<: available for mailboxes :>: <strong><@ MailboxSpaceFree @></strong> &middot;
+										1000 MB = 1 GB
+									</div>
+								</td>
 							</tr>
 							
 						</table>
