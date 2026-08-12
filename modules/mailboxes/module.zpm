@@ -115,8 +115,12 @@ input[type=submit] {
                 </tr>
                 <tr>
                     <th><: Set Password :>:</th>
-                    <td><input class="inPassword" type="password" name="inPassword" id="inPassword" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{4,}" required /></td>
+                    <td><input class="inPassword" type="password" name="inPassword" id="inPassword" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{4,}" autocomplete="new-password" /></td>
 					<td><input id="showPassword" type="checkbox" data-password-toggle="inPassword" >Show Password</td>
+                </tr>
+                <tr>
+                    <th></th>
+                    <td colspan="2"><small><: Leave blank to keep the current password :></small></td>
                 </tr>
                 <% endloop %>
 				

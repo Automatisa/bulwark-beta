@@ -228,7 +228,11 @@ class module_controller extends ctrl_module
         if (!$ownCheck->fetch()) {
             return false;
         }
-		if (fs_director::CheckForEmptyValue(self::CheckPasswordForErrors($password))) {
+		// Contraseña OPCIONAL al editar: vacía = conservar la actual. El include del
+		// mailserver (postfix.php) ya lo respeta: solo toca mailbox.password si no
+		// viene vacía; x_mailboxes no almacena contraseña.
+		$password = trim((string) $password);
+		if ($password === '' || fs_director::CheckForEmptyValue(self::CheckPasswordForErrors($password))) {
 
 			// Cambio opcional de tamaño del buzón (MB), descontado de la cuota de disco del paquete.
 			$rowmailbox = null;
@@ -536,7 +540,8 @@ class module_controller extends ctrl_module
         $formvars = $controller->GetAllControllerRequests('FORM');
         $enabled = (isset($formvars['inEnabled'])) ? fs_director::GetCheckboxValue($formvars['inEnabled']) : 0;
         $size = isset($formvars['inSize']) ? $formvars['inSize'] : '';
-        if (self::ExecuteUpdateMailbox($formvars['inSave'], $formvars['inPassword'], $enabled, $size))
+        $password = isset($formvars['inPassword']) ? $formvars['inPassword'] : '';
+        if (self::ExecuteUpdateMailbox($formvars['inSave'], $password, $enabled, $size))
             self::$ok = true;
         return true;
     }
