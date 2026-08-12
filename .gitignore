@@ -23,3 +23,6 @@ DISENO_JAILS_NIVEL1.md
 compilador_php/config.local.sh
 compilador_php/LEEME.md
 php-dist/
+
+# Artefactos de indexado codebase-memory (generados localmente, no versionar)
+.codebase-memory/
