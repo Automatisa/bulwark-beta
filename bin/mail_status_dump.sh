@@ -30,6 +30,17 @@ log_to_json() {
 }
 LOG_JSON=$(log_to_json)
 
+# ---- Entradas categorizadas (líneas crudas del maillog, para las vistas de detalle) ----
+cat_lines() {
+    grep -E "$1" "$LOG" 2>/dev/null | tail -n 80 | awk 'BEGIN{f=1}{
+        gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\t/," "); gsub(/\r/,"");
+        if(!f)printf ","; printf "\"%s\"",$0; f=0
+    }'
+}
+REJECTED_JSON=$(cat_lines "NOQUEUE: reject|[a-z]+: reject:")
+BOUNCED_JSON=$(cat_lines "status=bounced")
+DEFERRED_JSON=$(cat_lines "status=deferred")
+
 # ---- Contadores del maillog actual ----
 cnt() { grep -c "$1" "$LOG" 2>/dev/null | tr -d ' \t'; }
 SENT=$(cnt "status=sent");      SENT=${SENT:-0}
@@ -47,7 +58,10 @@ TS=$(date +%s)
   printf '"stats":{"sent":%s,"deferred":%s,"bounced":%s,"rejected":%s,"sasl_failed":%s},' \
          "$SENT" "$DEFER" "$BOUNCE" "$REJECT" "$SASLFAIL"
   printf '"queue":[%s],' "$QUEUE_JSON"
-  printf '"log":[%s]' "$LOG_JSON"
+  printf '"log":[%s],' "$LOG_JSON"
+  printf '"rejected_lines":[%s],' "$REJECTED_JSON"
+  printf '"bounced_lines":[%s],' "$BOUNCED_JSON"
+  printf '"deferred_lines":[%s]' "$DEFERRED_JSON"
   printf '}'
 } > "$TMPFILE" 2>/dev/null
 
