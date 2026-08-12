@@ -157,3 +157,10 @@ td small { color: #555; word-break: break-word; }
     font-size: 0.85em;
     color: #e65100;
 }
+
+/* Sección "Pendientes de emisión" (siempre visible en View Your Certificates) */
+.sencrypt-pending-empty {
+    color: #555;
+    margin: 4px 0 10px;
+}
+td.sencrypt-queue { margin-top: 0; }

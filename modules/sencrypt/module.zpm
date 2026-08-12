@@ -59,7 +59,11 @@
 </div>
 
 <div style="display: <@ ShowViewCerts @>;" id="ViewCerts" class="tabcontent">
-  	<% if Admin %>
+
+	<!-- Sección "Pendientes de emisión" SIEMPRE visible: sitio fijo donde ver las (re)emisiones
+	     en cola (programadas tras el cooldown o pendientes del daemon); si no hay, lo dice. -->
+	<@ PendingIssues @>
+	<% if Admin %>
 		<div class="zgrid_wrapper" >
 			<table class="table">
 				<h3><: Your Control Panel Certificate :></h3>

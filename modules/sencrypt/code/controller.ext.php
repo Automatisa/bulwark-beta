@@ -637,19 +637,85 @@ class module_controller extends ctrl_module {
 		} catch (\Exception $e) { /* tabla aún no creada (migración pendiente) */ }
 	}
 
+	# Texto de estado de una (re)emisión con timestamp $ts (vh_le_reissue_ts o
+	# panel_le_reissue_ts): programada tras el cooldown por historial (ts futuro) o
+	# solicitada y pendiente del próximo ciclo del daemon (ts pasado).
+	static function queueBadgeText($ts) {
+		$ts = (int)$ts;
+		if ($ts > time()) {
+			return '<i class="bi bi-hourglass-split me-1"></i>En cola: se emitirá a partir del '
+			     . gmdate('Y-m-d H:i', $ts) . ' UTC';
+		}
+		return '<i class="bi bi-hourglass-split me-1"></i>Reemisión solicitada: se emitirá en el próximo ciclo del daemon.';
+	}
+
 	# Insignia para la lista del usuario: avisa de que hay una (re)emisión EN COLA (programada tras el
 	# cooldown por historial, o solicitada y pendiente del próximo ciclo del daemon). '' si no hay nada.
 	static function queueBadge($rowdomains, $certMtime = null) {
 		$ts = (int)($rowdomains['vh_le_reissue_ts'] ?? 0);
 		if ($ts <= 0) { return ''; }
 		if ($ts > time()) {
-			return '<div class="sencrypt-queue"><i class="bi bi-hourglass-split me-1"></i>En cola: se emitirá a partir del '
-			     . gmdate('Y-m-d H:i', $ts) . ' UTC</div>';
+			return '<div class="sencrypt-queue">' . self::queueBadgeText($ts) . '</div>';
 		}
 		if ($certMtime !== null && $certMtime < $ts) {
-			return '<div class="sencrypt-queue"><i class="bi bi-hourglass-split me-1"></i>Reemisión solicitada: se emitirá en el próximo ciclo del daemon.</div>';
+			return '<div class="sencrypt-queue">' . self::queueBadgeText($ts) . '</div>';
 		}
 		return '';
+	}
+
+	# ===== Sección "Pendientes de emisión" SIEMPRE visible en View Your Certificates ============
+	# Lista EXACTAMENTE lo que el daemon (OnDaemonHour) considera pendiente, para que el usuario
+	# tenga un sitio fijo donde mirar:
+	#   - ts futuro                          -> programada al liberarse el cupo (cooldown por historial);
+	#   - ts pasado y cert ausente/más viejo -> solicitada, se emitirá en el próximo ciclo.
+	# Cubre el cert del panel (admin; panel_le_reissue_ts, mismo path que el hook: zadmin/...) y los
+	# vhosts PROPIOS del usuario (vh_le_reissue_ts; anti-IDOR con vh_acc_fk). Los ts pasados cuyo
+	# cert ya es más nuevo (reemisión consumida) NO se listan, igual que el daemon los ignora.
+	static function getPendingIssues() {
+		global $zdbh;
+		$cu   = ctrl_users::GetUserDetail();
+		$rows = array();
+
+		# Cert del panel (solo admin, que es quien ve la tabla "Your Control Panel Certificate").
+		if ((int)$cu['usergroupid'] === ctrl_groups::GROUP_ADMIN) {
+			$ts = (int)ctrl_options::GetSystemOption('panel_le_reissue_ts');
+			if ($ts > 0) {
+				$pcert = ctrl_options::GetSystemOption('hosted_dir') . 'zadmin/ssl/sencrypt/letsencrypt/'
+				       . ctrl_options::GetSystemOption('bulwark_domain') . '/cert.pem';
+				$mtime = @filemtime($pcert);
+				if ($ts > time() || $mtime === false || $mtime < $ts) {
+					$rows[] = array(ctrl_options::GetSystemOption('bulwark_domain') . ' (panel de control)', $ts);
+				}
+			}
+		}
+
+		# Vhosts del propio usuario con (re)emisión marcada.
+		$q = $zdbh->prepare("SELECT vh_name_vc, vh_le_reissue_ts FROM x_vhosts
+		                     WHERE vh_acc_fk=:u AND vh_enabled_in=1 AND vh_deleted_ts IS NULL AND vh_le_reissue_ts>0
+		                     ORDER BY vh_le_reissue_ts ASC, vh_name_vc ASC");
+		$q->execute(array(':u' => (int)$cu['userid']));
+		while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
+			$ts = (int)$r['vh_le_reissue_ts'];
+			$cert = ctrl_options::GetSystemOption('hosted_dir') . $cu['username'] . '/ssl/sencrypt/letsencrypt/'
+			      . $r['vh_name_vc'] . '/cert.pem';
+			$mtime = @filemtime($cert);
+			if ($ts > time() || $mtime === false || $mtime < $ts) {
+				$rows[] = array($r['vh_name_vc'], $ts);
+			}
+		}
+
+		$html = '<div class="zgrid_wrapper"><h3><i class="bi bi-hourglass-split me-1"></i>Pendientes de emisión</h3>';
+		if (!$rows) {
+			$html .= '<p class="sencrypt-pending-empty">No hay emisiones pendientes: todos los certificados están emitidos y se renovarán solos ~30 días antes de caducar. Si solicitas un wildcard o una reemisión y el cupo de Let\'s Encrypt (5 certificados por conjunto de nombres / 7 días) está agotado, quedará en cola aquí con su fecha de emisión.</p>';
+		} else {
+			$html .= '<table class="table"><tr><th>Dominio</th><th>Estado</th></tr>';
+			foreach ($rows as $r) {
+				$html .= '<tr><td>' . htmlspecialchars($r[0], ENT_QUOTES, 'UTF-8')
+				       . '</td><td class="sencrypt-queue">' . self::queueBadgeText($r[1]) . '</td></tr>';
+			}
+			$html .= '</table>';
+		}
+		return $html . '</div>';
 	}
 
 	# Fuerza la reemisión del certificado LE de un dominio/subdominio del PROPIO usuario (anti-IDOR),
