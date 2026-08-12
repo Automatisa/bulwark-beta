@@ -20,6 +20,10 @@ set -e
 PANEL_PATH="/usr/local/bulwark"
 PANEL_DATA="/var/bulwark"
 PANEL_CONF="/usr/local/etc/bulwark"
+# Usuario DEDICADO del panel (aislado del genérico 'www' de Apache). El pool PHP-FPM del panel
+# corre como él; los permisos de escalada (doas) y los secretos se conceden a ESTE usuario.
+# Fuente única del aislamiento: bin/migrate_panel_user.sh (idempotente).
+PANEL_USER="bulwark"
 VMAIL_UID=2000
 VMAIL_GID=2000
 GIT_REPO="https://github.com/Automatisa/new_se.git"
@@ -1913,11 +1917,19 @@ info "Configurando doas..."
 
 # doas.conf se GENERA desde el mapa de privilege.class.php (fuente única de verdad). Evita
 # duplicar/desincronizar reglas y elimina permisos muertos. Añadir una accion = 1 edicion.
-php -r 'require "'"$PANEL_PATH"'/dryden/sys/privilege.class.php"; echo privilege::doasRules("www");' > /usr/local/etc/doas.conf
-chown root:wheel /usr/local/etc/doas.conf
-
-chmod 600 /usr/local/etc/doas.conf
-ok "doas configurado"
+# IMPORTANTE: las reglas se conceden a PANEL_USER (usuario dedicado del panel), NUNCA a 'www'
+# (Apache/estáticos). Generarlas para el usuario equivocado deja TODAS las acciones privilegiadas
+# del panel denegadas por doas (ver MEMORIA SES-2026-08-12-H). bin/migrate_panel_user.sh
+# (idempotente, corre al final) regenera esto mismo; se valida antes de instalar, igual que allí.
+TMP_DOAS="$(mktemp /tmp/doas.conf.XXXXXX)"
+php -r "require '${PANEL_PATH}/dryden/sys/privilege.class.php'; echo privilege::doasRules('${PANEL_USER}');" > "$TMP_DOAS"
+if [ "$(grep -c "^permit nopass ${PANEL_USER} " "$TMP_DOAS")" -ge 30 ] && doas -C "$TMP_DOAS" >/dev/null 2>&1; then
+    install -o root -g wheel -m 600 "$TMP_DOAS" /usr/local/etc/doas.conf
+    ok "doas configurado (reglas para ${PANEL_USER})"
+else
+    echo "AVISO: doas.conf generado parece inválido; NO se instala (se mantiene el anterior)."
+fi
+rm -f "$TMP_DOAS"
 
 ###############################################################################
 # 15b. AISLAR EL PANEL EN SU PROPIO USUARIO (separado del genérico 'www')
@@ -2107,7 +2119,7 @@ ok "Permisos ajustados"
 # idempotente: bin/migrate_panel_user.sh. El daemon sigue como root.
 info "Aislando el panel en su propio usuario del sistema..."
 if [ -x "$PANEL_PATH/bin/migrate_panel_user.sh" ]; then
-    PANEL_USER=bulwark PANEL_PATH="$PANEL_PATH" PANEL_DATA="$PANEL_DATA" \
+    PANEL_USER="$PANEL_USER" PANEL_PATH="$PANEL_PATH" PANEL_DATA="$PANEL_DATA" \
         sh "$PANEL_PATH/bin/migrate_panel_user.sh" && ok "Panel aislado en usuario propio" \
         || echo "AVISO: no se pudo aislar el panel; sigue corriendo como www"
 fi
