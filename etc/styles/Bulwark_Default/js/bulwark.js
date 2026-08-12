@@ -108,16 +108,26 @@ var Sentora = {
 
         init: function() {
             Sentora.utils.log('Sentora.loader.init() ran - Watching for Click events');
-            //Bind zloader to button click
-            $('#button').click(function() {
+            // El loader solo debe aparecer si el envío va a progresar: si el botón es un
+            // submit dentro de un formulario inválido (required vacío, etc.), el navegador
+            // bloquea el envío nativo (burbuja "Completa este campo") y el spinner quedaría
+            // pegado sin navegación. checkValidity() no dispara la burbuja; la dispara el
+            // intento de envío que sigue al click. Enlaces y botones type=button (p.ej.
+            // cancelar con data-href) no se tocan: siguen mostrando el loader como antes.
+            var onLoaderClick = function() {
+                var btn = this;
+                if (btn.tagName === 'BUTTON' && btn.type === 'submit') {
+                    var f = btn.form || (btn.closest ? btn.closest('form') : null);
+                    if (f && typeof f.checkValidity === 'function' && !f.checkValidity()) return;
+                }
                 Sentora.loader.showLoader();
-            });
+            };
+            //Bind zloader to button click
+            $('#button').click(onLoaderClick);
             // $('.fg-button').click(function() {
             //     Sentora.loader.showLoader();
             // });
-            $('.button-loader').click(function() {
-                Sentora.loader.showLoader();
-            });
+            $('.button-loader').click(onLoaderClick);
             //Bind zloader to save button click
             // $('.save').click(function() {
             //     Sentora.loader.showLoader();

@@ -16,7 +16,7 @@
         <script src="<# ui_tpl_assetfolderpath #>js/jquery.cookie.js"></script>
         <script src="<# ui_tpl_assetfolderpath #>js/jquery.sortable-custom.js"></script>
         <script src="<# ui_tpl_assetfolderpath #>js/spin.min.js"></script>
-        <script src="<# ui_tpl_assetfolderpath #>js/bulwark.js"></script>
+        <script src="<# ui_tpl_assetfolderpath #>js/bulwark.js?v=20260812"></script>
 
         <!-- Favicons -->
         <link rel="apple-touch-icon-precomposed" sizes="57x57"   href="<# ui_tpl_assetfolderpath #>img/ico/apple-touch-icon-57-precomposed.png">
