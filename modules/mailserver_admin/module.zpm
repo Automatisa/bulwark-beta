@@ -46,6 +46,63 @@
     </div>
 
     <div class="zgrid_wrapper">
+        <h3><: Rejected :> (<@ StatRejected @>)</h3>
+        <p class="ms-muted"><: Recipient refusals (NOQUEUE reject) in the current mail log, newest first. :></p>
+        <div class="table-responsive">
+            <table class="table">
+                <tr><th><: When :></th><th><: Queue :></th><th><: From :></th><th><: To :></th><th><: Reason :></th></tr>
+                <% loop Rejected_Mails %>
+                <tr>
+                    <td class="ms-mono"><& D_Time &></td>
+                    <td class="ms-mono"><& D_Queue &></td>
+                    <td><& D_From &></td>
+                    <td><& D_To &></td>
+                    <td class="ms-muted"><& D_Reason &></td>
+                </tr>
+                <% endloop %>
+            </table>
+        </div>
+    </div>
+
+    <div class="zgrid_wrapper">
+        <h3><: Bounced :> (<@ StatBounced @>)</h3>
+        <p class="ms-muted"><: Delivery failures (status=bounced) in the current mail log, newest first. :></p>
+        <div class="table-responsive">
+            <table class="table">
+                <tr><th><: When :></th><th><: Queue :></th><th><: From :></th><th><: To :></th><th><: Reason :></th></tr>
+                <% loop Bounced_Mails %>
+                <tr>
+                    <td class="ms-mono"><& D_Time &></td>
+                    <td class="ms-mono"><& D_Queue &></td>
+                    <td><& D_From &></td>
+                    <td><& D_To &></td>
+                    <td class="ms-muted"><& D_Reason &></td>
+                </tr>
+                <% endloop %>
+            </table>
+        </div>
+    </div>
+
+    <div class="zgrid_wrapper">
+        <h3><: Deferred :> (<@ StatDeferred @>)</h3>
+        <p class="ms-muted"><: Temporarily deferred deliveries (status=deferred) in the current mail log, newest first. :></p>
+        <div class="table-responsive">
+            <table class="table">
+                <tr><th><: When :></th><th><: Queue :></th><th><: From :></th><th><: To :></th><th><: Reason :></th></tr>
+                <% loop Deferred_Mails %>
+                <tr>
+                    <td class="ms-mono"><& D_Time &></td>
+                    <td class="ms-mono"><& D_Queue &></td>
+                    <td><& D_From &></td>
+                    <td><& D_To &></td>
+                    <td class="ms-muted"><& D_Reason &></td>
+                </tr>
+                <% endloop %>
+            </table>
+        </div>
+    </div>
+
+    <div class="zgrid_wrapper">
         <h3><: Blocked addresses :> (<@ BannedCount @>)</h3>
         <p class="ms-muted"><: IPs auto-banned by SSHGuard (SSH + SMTP brute-force) and manual firewall blocks. Manage them in the Firewall module. :></p>
         <div class="table-responsive">

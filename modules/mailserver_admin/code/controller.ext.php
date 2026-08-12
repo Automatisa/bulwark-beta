@@ -98,6 +98,41 @@ class module_controller extends ctrl_module
         return implode('', $out);
     }
 
+    // ---- Vistas de detalle (rejected / bounced / deferred) ----------------
+    // Convierte las líneas crudas del maillog que el JSON expone
+    // (rejected_lines, bounced_lines, deferred_lines) en filas de tabla.
+    // El motor de plantillas escapa la salida de <& &>, así que se
+    // devuelven los datos en crudo.
+    private static function detailRows($key)
+    {
+        self::load();
+        $lines = (array)(self::$data[$key] ?? array());
+        if (empty($lines)) {
+            return array(array('D_Time' => ui_language::translate('No entries in the current mail log.'), 'D_Queue' => '', 'D_From' => '', 'D_To' => '', 'D_Reason' => ''));
+        }
+        $rows = array();
+        foreach (array_reverse($lines) as $l) { // más recientes primero
+            $l = (string)$l;
+            $time = $queue = $from = $to = $reason = '';
+            if (preg_match('/^([A-Z][a-z]{2} +\d+ \d\d:\d\d:\d\d)/', $l, $m))       { $time = $m[1]; }
+            if (preg_match('/\]:\s*([0-9A-Za-z]+):\s/', $l, $m))                    { $queue = $m[1]; }
+            if (preg_match('/\bfrom=<([^>]*)>/', $l, $m))                           { $from = $m[1]; }
+            if (preg_match('/\bto=<([^>]*)>/', $l, $m))                             { $to = $m[1]; }
+            if (preg_match('/\breject:\s*[A-Z-]+ from \S+:\s*([^;]+);/', $l, $m)) {
+                $reason = trim($m[1]);
+            } elseif (preg_match('/status=(?:bounced|deferred)\s*\((.*)\)\s*$/', $l, $m)) {
+                $reason = trim($m[1]);
+            }
+            if ($reason === '') { $reason = $l; } // línea no parseable: se muestra entera
+            $rows[] = array('D_Time' => $time, 'D_Queue' => $queue, 'D_From' => $from, 'D_To' => $to, 'D_Reason' => $reason);
+        }
+        return $rows;
+    }
+
+    static function getRejected_Mails() { return self::detailRows('rejected_lines'); }
+    static function getBounced_Mails()  { return self::detailRows('bounced_lines'); }
+    static function getDeferred_Mails() { return self::detailRows('deferred_lines'); }
+
     // ---- IPs bloqueadas (loop, reusa fw_status.json) ----------------------
     static function getBanned_IPs()
     {
