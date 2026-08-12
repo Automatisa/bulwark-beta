@@ -197,7 +197,8 @@ class module_controller extends ctrl_module
     }
 
     /** Al crear un subdominio, hereda las IP dedicadas de su dominio padre (doble pila en el vhost)
-     *  y crea su registro A (siempre, para que resuelva) y AAAA (si el padre tiene IPv6) como ETIQUETA
+     *  y crea su registro A (siempre, para que resuelva) y AAAA (IPv6 dedicada del padre o, en su
+     *  defecto, la IPv6 global del servidor) como ETIQUETA
      *  dentro de la ZONA DEL PADRE (dn_vhost_fk=padre, dn_host_vc=<label>). El alias de red ya lo tiene
      *  el padre (misma IP compartida), así que aquí no se toca la red. */
     private static function InheritParentIP($subVhostId, $subFullName)
@@ -224,7 +225,11 @@ class module_controller extends ctrl_module
         $pid = (int)$parent['vh_id_pk'];
         $a4  = ($pv4 !== '') ? $pv4 : (string)ctrl_options::GetOption('server_ip');
         self::UpsertSubLabel($pid, $parentName, $acc, $label, 'A', $a4);
-        if ($pv6 !== '') self::UpsertSubLabel($pid, $parentName, $acc, $label, 'AAAA', $pv6);
+        // Simétrico al A: IPv6 dedicada del padre si la tiene; si no, la IPv6 global del servidor
+        // (server_ip6). Sin fallback, en servidores con IPv6 global (sin IP6 dedicada por vhost)
+        // los subdominios jamás recibían AAAA.
+        $a6 = ($pv6 !== '') ? $pv6 : (string)ctrl_options::GetOption('server_ip6');
+        if ($a6 !== '') self::UpsertSubLabel($pid, $parentName, $acc, $label, 'AAAA', $a6);
         // Marcar rebuild de la zona del padre
         $row = $zdbh->query("SELECT so_value_tx FROM x_settings WHERE so_name_vc='dns_hasupdates'")->fetch();
         $ids = array_filter(explode(',', (string)($row['so_value_tx'] ?? '')), 'strlen');
