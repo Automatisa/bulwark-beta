@@ -44,6 +44,18 @@ runtime_hook::Execute("OnStartDaemonRun");
 runtime_hook::Execute("OnDaemonRun");
 runtime_hook::Execute("OnEndDaemonRun");
 
+// Compuertas temporales: cada ciclo usa su opción de x_settings como marca de última
+// ejecución. El instalador debe sembrarlas, pero si alguna falta (histórico:
+// daemon_hourrun nunca se sembró) GetSystemOption devuelve false, la comparación
+// (time() >= false + N) pasa en CADA tick del cron y SetSystemOption(create=false)
+// solo hace UPDATE -> la fila jamás se crea y el ciclo se ejecuta cada 5 minutos.
+// Auto-reparación: sembrar con 0 las que falten (comportamiento previsto del setter).
+foreach (array('daemon_hourrun', 'daemon_dayrun', 'daemon_weekrun', 'daemon_monthrun') as $gate) {
+    if (ctrl_options::GetSystemOption($gate) === false) {
+        ctrl_options::SetSystemOption($gate, '0', true);
+    }
+}
+
 if (time() >= ctrl_options::GetSystemOption('daemon_hourrun') + 3600) {
     ctrl_options::SetSystemOption('daemon_hourrun', time());
     runtime_hook::Execute("OnStartDaemonHour");

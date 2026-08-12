@@ -57,7 +57,8 @@ INSERT  INTO zpanel_core.`x_settings`(`so_id_pk`,`so_name_vc`,`so_cleanname_vc`,
 (38,'daemon_lastrun','Daemon timeing cache','0',NULL,'Timestamp of when the daemon last ran.',NULL,'false'),
 (39,'daemon_dayrun','Daemon timeing cache','0',NULL,NULL,NULL,'false'),
 (40,'daemon_weekrun','Daemon timeing cache','0',NULL,NULL,NULL,'false'),
-(41,'daemon_monthrun','Daemon timeing cache','0',NULL,NULL,NULL,'false');
+(41,'daemon_monthrun','Daemon timeing cache','0',NULL,NULL,NULL,'false'),
+(NULL,'daemon_hourrun','Daemon timeing cache','0',NULL,NULL,NULL,'false');
 
 INSERT  INTO zpanel_core.`x_settings`(`so_id_pk`,`so_name_vc`,`so_cleanname_vc`,`so_value_tx`,`so_defvalues_tx`,`so_desc_tx`,`so_module_vc`,`so_usereditable_en`) VALUES 
 (42,'purge_bu','Purge Backups','true','true|false','Delete client backups after allotted time has elapsed to help save diskspace (true/false)','Backup Config','true'),
