@@ -55,7 +55,7 @@ echo "END Apache Config Hook." . fs_filehandler::NewLine();
  * @param string $userEmail[5~ * @return string
  *
  */
-function BuildVhostPortForward($vhostName, $customPort, $userEmail) {
+function BuildVhostPortForward($vhostName, $customPort, $userEmail, $extraAliases = '') {
 		
 	$customPort_in = $customPort;
 	
@@ -64,7 +64,7 @@ function BuildVhostPortForward($vhostName, $customPort, $userEmail) {
     $line .= "<Virtualhost *:".$apache_port.">" . fs_filehandler::NewLine();
     $line .= "ServerName " . $vhostName . fs_filehandler::NewLine();
 	if ($vhostName != ctrl_options::GetSystemOption('bulwark_domain') ) 
-		$line .= "ServerAlias www." . $vhostName . fs_filehandler::NewLine();
+		$line .= "ServerAlias www." . $vhostName . $extraAliases . fs_filehandler::NewLine();
     $line .= "ServerAdmin " . $userEmail . fs_filehandler::NewLine();
     $line .= "RewriteEngine on" . fs_filehandler::NewLine();
     $line .= "ReWriteCond %{SERVER_PORT} !^" . $customPort_in . "$" . fs_filehandler::NewLine();
@@ -80,14 +80,14 @@ function BuildVhostPortForward($vhostName, $customPort, $userEmail) {
 }
 
 # vhost SSL ReWrite http to https -tg
-function BuildVhostReWriteSSL($vhostName, $userEmail) {
+function BuildVhostReWriteSSL($vhostName, $userEmail, $extraAliases = '') {
 		
     $line = "# DOMAIN: " . $vhostName . fs_filehandler::NewLine();
     $line .= "# SSL REDIRECT" . fs_filehandler::NewLine();
     $line .= "<Virtualhost *:".ctrl_options::GetSystemOption('apache_port').">" . fs_filehandler::NewLine();
     $line .= "ServerName " . $vhostName . fs_filehandler::NewLine();
 	if ($vhostName != ctrl_options::GetSystemOption('bulwark_domain') ) 
-		$line .= "ServerAlias www." . $vhostName . fs_filehandler::NewLine();
+		$line .= "ServerAlias www." . $vhostName . $extraAliases . fs_filehandler::NewLine();
     $line .= "ServerAdmin " . $userEmail . fs_filehandler::NewLine();
     # Reto ACME (Let's Encrypt) servido por HTTP desde el dir COMPARTIDO de Bulwark
     # (/var/bulwark/acme-challenge, escribible por el panel). Antes el :80 excluía el
@@ -103,7 +103,10 @@ function BuildVhostReWriteSSL($vhostName, $userEmail) {
 	$line .= "RewriteCond %{HTTPS} !=on" . fs_filehandler::NewLine();
 	# Excluir el challenge ACME del redirect a HTTPS (se sirve por HTTP vía el Alias de arriba).
 	$line .= "RewriteCond %{REQUEST_URI} !^/\\.well-known/acme-challenge/" . fs_filehandler::NewLine();
-	$line .= "RewriteRule ^/?(.*) https://%{SERVER_NAME}/$1 [R,L]" . fs_filehandler::NewLine();
+	# HTTP_HOST (y no SERVER_NAME): preserva el HOST pedido, de modo que los ALIAS del dominio
+	# (ServerAlias) llegan a HTTPS como alias -> el cert los cubre como SAN. Es seguro: Apache solo
+	# rutea aquí peticiones cuyo Host coincide con ServerName/ServerAlias (nombres ya validados).
+	$line .= "RewriteRule ^/?(.*) https://%{HTTP_HOST}/$1 [R,L]" . fs_filehandler::NewLine();
     $line .= "</virtualhost>" . fs_filehandler::NewLine();
 	$line .= fs_filehandler::NewLine();
 	$line .= "##-------" . fs_filehandler::NewLine();
@@ -495,6 +498,9 @@ function WriteVhostConfigFile() {
 
 	# Alias extra (ServerAlias) configurados en el módulo Domains (x_vhosts.vh_aliases_vc).
 	# Se re-validan aquí (defensa en profundidad: el valor acaba en el httpd-vhosts.conf).
+	# $extraAliases acumula SOLO los alias extra (sin el www.) para los vhost auxiliares de
+	# redirect HTTP->HTTPS y port-forward, que construyen su propio "ServerAlias www.<dom>".
+	$extraAliases = '';
 	if ($rowvhost['vh_type_in'] == 1 && !empty($rowvhost['vh_aliases_vc'])) {
 		foreach (preg_split('/[\s,]+/', strtolower((string)$rowvhost['vh_aliases_vc'])) as $_alias) {
 			$_alias = trim($_alias);
@@ -502,6 +508,7 @@ function WriteVhostConfigFile() {
 			if (!preg_match('/^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/', $_alias)) continue;
 			if (strpos($_alias, 'www.') === 0) continue;
 			$serveralias .= ' ' . $_alias;
+			$extraAliases .= ' ' . $_alias;
 		}
 	}
 	
@@ -599,12 +606,12 @@ function WriteVhostConfigFile() {
 				$line .= "################################################################" . fs_filehandler::NewLine();
 				if ($rowvhost['vh_portforward_in'] <> 0) {
 					$line .= fs_filehandler::NewLine();
-					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail);
+					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail, $extraAliases);
 				}
 			# If vhost SSL_TX not null create spearate <virtualhost>
 			} elseif ($rowvhost['vh_ssl_tx'] != null && $rowvhost['vh_ssl_port_in'] != null ) {
 				# Build HTTP to HTTPS Redirect
-				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail);
+				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail, $extraAliases);
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= "# THIS DOMAIN HAS BEEN DISABLED FOR DISK QUOTA OVERAGE & HAS SSL ENABLED" . fs_filehandler::NewLine();
@@ -670,12 +677,12 @@ function WriteVhostConfigFile() {
 				
 				$line .= fs_filehandler::NewLine();
 				if ($rowvhost['vh_portforward_in'] <> 0) {
-					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail);
+					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail, $extraAliases);
 				}
 			# If vhost SSL_TX not null create spearate <virtualhost>
 			} elseif ($rowvhost['vh_ssl_tx'] != null && $rowvhost['vh_ssl_port_in'] != null ) {
 				# Build HTTP to HTTPS Redirect
-				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail);
+				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail, $extraAliases);
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 				$line .= "# THIS DOMAIN HAS BEEN DISABLED FOR BANDWIDTH OVERAGE & HAS SSL ENABLED" . fs_filehandler::NewLine();
@@ -746,12 +753,12 @@ function WriteVhostConfigFile() {
 				
 				$line .= fs_filehandler::NewLine();
 				if ($rowvhost['vh_portforward_in'] <> 0) {
-					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail);
+					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail, $extraAliases);
 				}
 			# If vhost SSL_TX not null create spearate <virtualhost>
 			} elseif ($rowvhost['vh_ssl_tx'] != null && $rowvhost['vh_ssl_port_in'] != null) {
 				# Build HTTP to HTTPS Redirect
-				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail);
+				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail, $extraAliases);
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
 			$line .= BuildStaticVhostBlock(
@@ -851,7 +858,7 @@ function WriteVhostConfigFile() {
 				
 				if ($rowvhost['vh_portforward_in'] <> 0) {
 					$line .= fs_filehandler::NewLine();
-					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail);
+					$line .= BuildVhostPortForward($rowvhost['vh_name_vc'], $vhostPort, $useremail, $extraAliases);
 				}	
 			# If vhost SSL_TX not null create spearate <virtualhost>
 			} elseif ($rowvhost['vh_ssl_tx'] != null && $rowvhost['vh_ssl_port_in'] != null) {
@@ -859,7 +866,7 @@ function WriteVhostConfigFile() {
 				# sitio también por HTTP (mismo docroot). El :443 se genera igual en ambos casos.
 				if ((int)$rowvhost['vh_forcessl_in'] !== 0) {
 					# Build HTTP to HTTPS Redirect
-					$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail);
+					$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail, $extraAliases);
 				} else {
 					$line .= BuildRegularHttpVhost($rowvhost, $vhostIp, $vhostPort, $serveralias, $useremail, $RootDir, $_vhpaths, $_bwlogdir);
 				}
@@ -965,7 +972,7 @@ function WriteVhostConfigFile() {
 			} elseif ( $rowvhost['vh_ssl_tx'] != NULL && $rowvhost['vh_ssl_port_in'] != NULL ) {
 				
 				# Build HTTP to HTTPS Redirect
-				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail);
+				$line .= BuildVhostReWriteSSL($rowvhost['vh_name_vc'], $useremail, $extraAliases);
 				
 				# Build Vhost SSL section
 				$line .= "# DOMAIN: " . $rowvhost['vh_name_vc'] . fs_filehandler::NewLine();
