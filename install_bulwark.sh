@@ -1132,7 +1132,9 @@ rates {
     }
 }
 RSRATE
-chown www:www /var/bulwark/rspamd/ratelimit.conf
+# El panel (usuario propio, miembro de www) debe poder escribirlo; rspamd lo lee como root.
+chown ${PANEL_USER}:www /var/bulwark/rspamd/ratelimit.conf
+chmod 640 /var/bulwark/rspamd/ratelimit.conf
 cat > /usr/local/etc/rspamd/local.d/ratelimit.conf <<RSRATEINC
 .include(try=true,priority=10) "/var/bulwark/rspamd/ratelimit.conf"
 RSRATEINC
@@ -1167,7 +1169,8 @@ dns {
     connections = 4;
 }
 EOF
-chown www:www /var/bulwark/rspamd/options.inc
+chown ${PANEL_USER}:www /var/bulwark/rspamd/options.inc
+chmod 640 /var/bulwark/rspamd/options.inc
 
 # local.d/options.inc es estático: solo incluye el fichero dinámico
 cat > /usr/local/etc/rspamd/local.d/options.inc <<RSOPTS
@@ -1232,7 +1235,8 @@ RSPRXY
 # Directorio writable por www para configuración dinámica (Spamhaus DQS, etc.)
 mkdir -p /var/bulwark/rspamd
 chown www:www /var/bulwark/rspamd
-chmod 750 /var/bulwark/rspamd
+# 2770: el usuario del panel (miembro de www) crea/borra ficheros; setgid hereda grupo www.
+chmod 2770 /var/bulwark/rspamd
 
 # local.d/rbl.conf — incluye el fichero dinámico generado por el panel
 # (cuando no existe el fichero dinámico, try=true lo ignora silenciosamente)
@@ -1248,7 +1252,7 @@ cat > /usr/local/etc/rspamd/local.d/phishing.conf <<RSPHISH
 .include(try=true,priority=10) "/var/bulwark/rspamd/phishing.conf"
 RSPHISH
 
-# Ficheros dinámicos phishing (www:www)
+# Ficheros dinámicos phishing (los escribe el panel: <panel>:www; rspamd los lee como root)
 cat > /var/bulwark/rspamd/phishing.conf << 'PHCONF'
 # Generado por Bulwark antispam_admin — no editar manualmente
 openphish_enabled = false;
@@ -1277,7 +1281,7 @@ PHREDIRS
 
 touch /var/bulwark/rspamd/phishing_strict_domains.map
 
-chown www:www /var/bulwark/rspamd/phishing.conf \
+chown ${PANEL_USER}:www /var/bulwark/rspamd/phishing.conf \
               /var/bulwark/rspamd/phishing_redirectors.map \
               /var/bulwark/rspamd/phishing_strict_domains.map
 chmod 640 /var/bulwark/rspamd/phishing.conf \

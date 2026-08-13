@@ -13,6 +13,13 @@ $PANEL_PATH = '/usr/local/bulwark';
 $PANEL_DATA = '/var/bulwark';
 $PANEL_CONF = '/usr/local/etc/bulwark';
 
+// Usuario real del panel: se lee del pool FPM (no se hardcodea), igual que panel_update.sh.
+$PANEL_USER = trim((string)@shell_exec(
+    "awk -F= '/^[[:space:]]*user[[:space:]]*=/{gsub(/[[:space:]]/,\"\",\$2);print \$2;exit}' "
+    . "/usr/local/etc/php-fpm.d/www.conf 2>/dev/null"
+));
+if ($PANEL_USER === '') $PANEL_USER = 'bulwark';
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 $fixed  = 0;
@@ -224,6 +231,19 @@ foreach ($symlinks as $link => $target) {
     } else {
         echo "  [OK]     $link -> $target\n";
     }
+}
+
+// ── 7. Antispam (ficheros dinámicos rspamd) ──────────────────────────────────
+section("7. Antispam /var/bulwark/rspamd/");
+
+// El directorio es www:www 2770: el usuario del panel (miembro de www) crea/borra
+// ficheros y el setgid hereda el grupo www. Los ficheros los escribe el panel
+// (<panel>:www 640) y rspamd los lee con su proceso main (root).
+check_path("$PANEL_DATA/rspamd", 02770, 'www', 'www');
+foreach (['options.inc', 'ratelimit.conf', 'rbl.conf', 'phishing.conf',
+          'phishing_redirectors.map', 'phishing_strict_domains.map'] as $rsf) {
+    if (file_exists("$PANEL_DATA/rspamd/$rsf"))
+        check_path("$PANEL_DATA/rspamd/$rsf", 0640, $PANEL_USER, 'www');
 }
 
 // ── resumen ──────────────────────────────────────────────────────────────────
