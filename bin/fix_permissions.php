@@ -157,19 +157,26 @@ check_path("$PANEL_DATA/logs/bind",           0755, 'bind',  'bind');
 check_glob("$PANEL_DATA/logs/bind/*.log",     0640, 'bind',  'bind');
 check_path("$PANEL_DATA/logs/roundcube",      0755, 'www',   'www');
 check_glob("$PANEL_DATA/logs/roundcube/*",    0640, 'www',   'www');
+// Logs que append-ea el proceso FPM del panel → propietario el usuario del panel y
+// escritura para que pueda escribirlos (antes www:www 640 → el panel no podía).
 foreach (['bulwark.log','bulwark-access.log','bulwark-error.log',
-          'bulwark-bandwidth.log','php_errors.log','daemon-last-run.log'] as $f) {
+          'bulwark-bandwidth.log','php_errors.log'] as $f) {
     if (file_exists("$PANEL_DATA/logs/$f"))
-        check_path("$PANEL_DATA/logs/$f", 0640, 'www', 'www');
+        check_path("$PANEL_DATA/logs/$f", 0660, $PANEL_USER, 'www');
 }
+// daemon-last-run.log lo escribe el daemon (root); el panel solo lo lee.
+if (file_exists("$PANEL_DATA/logs/daemon-last-run.log"))
+    check_path("$PANEL_DATA/logs/daemon-last-run.log", 0640, 'root', 'www');
 
 // ── 3. Datos variables ───────────────────────────────────────────────────────
 section("3. Datos variables /var/bulwark/");
 
-check_path("$PANEL_DATA/sessions", 01733, 'www',  'www');
+check_path("$PANEL_DATA/sessions", 01733, $PANEL_USER, 'www');
 check_path("$PANEL_DATA/temp",     01777, 'root', 'wheel');
 check_path("$PANEL_DATA/hostdata", 0755,  'www',  'www');
-check_path("$PANEL_DATA/backups",  0700,  'root', 'wheel');
+// backups/: el panel (backupmgr/dobackup.php) escribe aquí; los scripts root de
+// vhost-backup también. Dueño el usuario del panel para que la copia completa funcione.
+check_path("$PANEL_DATA/backups",  02770, $PANEL_USER, 'www');
 check_path("$PANEL_DATA/sieve",    0750,  'vmail','mail');
 check_path("$PANEL_DATA/named",    0755,  'bind', 'bind');
 check_path("$PANEL_DATA/named/data", 0755, 'bind','bind');
@@ -178,8 +185,14 @@ check_path("$PANEL_DATA/named/data", 0755, 'bind','bind');
 section("4. Panel $PANEL_PATH/");
 
 check_path("$PANEL_PATH",          0755, 'root', 'wheel');
-check_path("$PANEL_PATH/cnf/db.php", 0640, 'root', 'www');
-check_path("$PANEL_PATH/etc/tmp",  0755, 'www',  'www');
+// Secretos: root:<usuario del panel> 640 — NUNCA root:www (Apache/contexto www no debe
+// leer credenciales). Fuente única del aislamiento: bin/migrate_panel_user.sh.
+foreach (['db.php', 'security.php', 'redis.pass', 'backup.key'] as $sec) {
+    if (file_exists("$PANEL_PATH/cnf/$sec"))
+        check_path("$PANEL_PATH/cnf/$sec", 0640, 'root', $PANEL_USER);
+}
+// etc/tmp lo escribe el panel (storage de plantillas, temporales de backup/SSL).
+check_path("$PANEL_PATH/etc/tmp", 02775, $PANEL_USER, 'www');
 check_path("$PANEL_PATH/bin",      0755, 'root', 'wheel');
 check_glob("$PANEL_PATH/bin/*.php",  0750, 'root', 'wheel');
 check_glob("$PANEL_PATH/bin/set*",   0750, 'root', 'wheel');
@@ -245,6 +258,63 @@ foreach (['options.inc', 'ratelimit.conf', 'rbl.conf', 'phishing.conf',
     if (file_exists("$PANEL_DATA/rspamd/$rsf"))
         check_path("$PANEL_DATA/rspamd/$rsf", 0640, $PANEL_USER, 'www');
 }
+
+// ── 8. Runtime escribible por el panel ───────────────────────────────────────
+section("8. Runtime escribible por el panel ($PANEL_DATA)");
+
+// run/: el panel crea ficheros de petición (fw, hosting, clamav, ftp, csr...); los
+// wrappers root los consumen. root:<panel> 2770: 'www' no accede (pueden llevar
+// credenciales, p.ej. imapsync/*.pass) y el setgid hereda el grupo del panel.
+check_path("$PANEL_DATA/run", 02770, 'root', $PANEL_USER);
+if (is_dir("$PANEL_DATA/run/imapsync"))
+    check_path("$PANEL_DATA/run/imapsync", 02770, $PANEL_USER, 'www');
+
+// cron/: staging de crontab que escribe el panel (www.cron) e instala cron_install.sh.
+check_path("$PANEL_DATA/cron", 02770, $PANEL_USER, 'www');
+
+// clamav/: configs las escribe clamav_admin (panel); quarantine y scan_results.log
+// son territorio root (los scripts de escaneo corren privilegiados).
+if (is_dir("$PANEL_DATA/clamav")) {
+    check_path("$PANEL_DATA/clamav", 02770, $PANEL_USER, 'www');
+    foreach (['antivirus.conf', 'freshclam_checks.conf', 'scan_paths.conf',
+              'scan_schedule.conf'] as $cc) {
+        if (file_exists("$PANEL_DATA/clamav/$cc"))
+            check_path("$PANEL_DATA/clamav/$cc", 0640, $PANEL_USER, 'www');
+    }
+    if (file_exists("$PANEL_DATA/clamav/quarantine"))
+        check_path("$PANEL_DATA/clamav/quarantine", 0700, 'root', 'wheel');
+    if (file_exists("$PANEL_DATA/clamav/scan_results.log"))
+        check_path("$PANEL_DATA/clamav/scan_results.log", 0640, 'root', 'www');
+}
+
+// mail_limits/: limit/whitelist los escribe antispam_admin. redis_pass es secreto del
+// grupo maillimit y se comprueba aparte (NO tocar aquí su propietario).
+if (is_dir("$PANEL_DATA/mail_limits")) {
+    check_path("$PANEL_DATA/mail_limits", 02770, $PANEL_USER, 'www');
+    foreach (['limit', 'whitelist'] as $ml) {
+        if (file_exists("$PANEL_DATA/mail_limits/$ml"))
+            check_path("$PANEL_DATA/mail_limits/$ml", 0640, $PANEL_USER, 'www');
+    }
+    if (file_exists("$PANEL_DATA/mail_limits/redis_pass"))
+        check_path("$PANEL_DATA/mail_limits/redis_pass", 0640, 'root', 'maillimit');
+}
+
+// ssl/sencrypt: cuentas ACME y certificados los escribe Lescript (panel). Solo se
+// comprueban directorios; el modo de los ficheros (private.pem 600) lo gestiona Lescript.
+check_path("$PANEL_DATA/ssl", 0750, $PANEL_USER, 'www');
+if (is_dir("$PANEL_DATA/ssl/sencrypt")) {
+    check_path("$PANEL_DATA/ssl/sencrypt", 0750, $PANEL_USER, 'www');
+    foreach (glob("$PANEL_DATA/ssl/sencrypt/*/", GLOB_ONLYDIR) ?: [] as $sd) {
+        check_path(rtrim($sd, '/'), 0750, $PANEL_USER, 'www');
+    }
+}
+
+// acme-challenge/: tokens HTTP-01 (el panel escribe, Apache sirve vía Alias).
+check_path("$PANEL_DATA/acme-challenge", 02775, $PANEL_USER, 'www');
+
+// updates/: lo escriben scripts root (panel_update, sys_update_check); el panel solo lee.
+check_path("$PANEL_DATA/updates", 0755, 'root', 'www');
+check_glob("$PANEL_DATA/updates/*", 0644, 'root', 'www');
 
 // ── resumen ──────────────────────────────────────────────────────────────────
 echo "\n" . str_repeat('═', 60) . "\n";

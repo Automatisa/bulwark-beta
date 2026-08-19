@@ -67,25 +67,41 @@ if [ -d "$PANEL_DATA/sessions" ]; then
     # Borrarlas fuerza un re-login limpio (aceptable en una migración). Ver incidencia login 2026-07-19.
     rm -f "$PANEL_DATA"/sessions/sess_* 2>/dev/null || true
 fi
-[ -d "$PANEL_PATH/etc/tmp" ]         && chown -R "${PANEL_USER}:www" "$PANEL_PATH/etc/tmp"
-if [ -f "$PANEL_DATA/logs/bulwark.log" ]; then
-    chown "${PANEL_USER}:www" "$PANEL_DATA/logs/bulwark.log"; chmod 660 "$PANEL_DATA/logs/bulwark.log"
-fi
-# Directorio de ficheros de petición privilegiada: root:PANEL_USER 770 (el panel escribe las req,
-# los wrappers root leen; www ya no lo necesita).
-[ -d "$PANEL_DATA/run" ]             && { chown "root:${PANEL_USER}" "$PANEL_DATA/run"; chmod 770 "$PANEL_DATA/run"; }
+[ -d "$PANEL_PATH/etc/tmp" ]         && { chown -R "${PANEL_USER}:www" "$PANEL_PATH/etc/tmp"; chmod 2775 "$PANEL_PATH/etc/tmp"; }
+# Logs que append-ea el proceso FPM del panel (antes www:www 640 → no podía escribirlos).
+for log in bulwark.log bulwark-access.log bulwark-error.log bulwark-bandwidth.log php_errors.log; do
+    [ -f "$PANEL_DATA/logs/$log" ] && { chown "${PANEL_USER}:www" "$PANEL_DATA/logs/$log"; chmod 660 "$PANEL_DATA/logs/$log"; }
+done
+# Directorio de ficheros de petición privilegiada: root:PANEL_USER 2770 (el panel escribe las
+# req, los wrappers root leen; www ya no lo necesita; puede haber credenciales: imapsync/*.pass).
+[ -d "$PANEL_DATA/run" ]             && { chown "root:${PANEL_USER}" "$PANEL_DATA/run"; chmod 2770 "$PANEL_DATA/run"; }
+[ -d "$PANEL_DATA/run/imapsync" ]    && { chown "${PANEL_USER}:www" "$PANEL_DATA/run/imapsync"; chmod 2770 "$PANEL_DATA/run/imapsync"; }
+# Backups completos (backupmgr escribe como panel) y staging de crontab (www.cron).
+[ -d "$PANEL_DATA/backups" ]         && { chown "${PANEL_USER}:www" "$PANEL_DATA/backups"; chmod 2770 "$PANEL_DATA/backups"; }
+[ -d "$PANEL_DATA/cron" ]            && { chown "${PANEL_USER}:www" "$PANEL_DATA/cron"; chmod 2770 "$PANEL_DATA/cron"; }
+# Certificados ACME / Let's Encrypt (Lescript escribe como panel) y reto HTTP-01.
+[ -d "$PANEL_DATA/ssl/sencrypt" ]    && chown -R "${PANEL_USER}:www" "$PANEL_DATA/ssl/sencrypt"
+[ -d "$PANEL_DATA/ssl" ]             && { chown "${PANEL_USER}:www" "$PANEL_DATA/ssl"; chmod 750 "$PANEL_DATA/ssl"; }
+[ -d "$PANEL_DATA/acme-challenge" ]  && { chown "${PANEL_USER}:www" "$PANEL_DATA/acme-challenge"; chmod 2775 "$PANEL_DATA/acme-challenge"; }
 
 # 5. Configs que el panel escribe DIRECTAMENTE (file_put_contents en contexto web). No son secretos:
 #    se dejan legibles por sus consumidores (rspamd/clamav). El panel (dueño) puede reescribirlas.
 info "Configs escritas por el panel -> ${PANEL_USER}:www"
 for f in rspamd/ratelimit.conf rspamd/options.inc rspamd/phishing.conf \
-         mail_limits/limit mail_limits/whitelist clamav/antivirus.conf; do
+         rspamd/rbl.conf rspamd/phishing_redirectors.map rspamd/phishing_strict_domains.map \
+         mail_limits/limit mail_limits/whitelist \
+         clamav/antivirus.conf clamav/freshclam_checks.conf clamav/scan_paths.conf \
+         clamav/scan_schedule.conf; do
     [ -e "$PANEL_DATA/$f" ] && chown "${PANEL_USER}:www" "$PANEL_DATA/$f"
 done
-# Dirs donde el panel (re)crea esos ficheros: setgid www + escritura de grupo.
-for d in rspamd mail_limits clamav cron; do
-    [ -d "$PANEL_DATA/$d" ] && { chgrp www "$PANEL_DATA/$d"; chmod g+ws "$PANEL_DATA/$d"; }
+# Directorios donde el panel (re)crea esos ficheros: dueño el panel, grupo www, setgid.
+# (rspamd queda fuera: su canonical es www:www 2770, ver 0034_rspamd_panel_owner.sh.)
+for d in mail_limits clamav cron backups; do
+    [ -d "$PANEL_DATA/$d" ] && { chown "${PANEL_USER}:www" "$PANEL_DATA/$d"; chmod 2770 "$PANEL_DATA/$d"; }
 done
+[ -d "$PANEL_DATA/rspamd" ] && { chgrp www "$PANEL_DATA/rspamd"; chmod 2770 "$PANEL_DATA/rspamd"; }
+# scan_results.log lo append-ean los scripts de escaneo (root) y lo lee el panel.
+[ -f "$PANEL_DATA/clamav/scan_results.log" ] && chown root:www "$PANEL_DATA/clamav/scan_results.log"
 
 # 6. doas -> PANEL_USER (fuente única: privilege.class.php). Se valida antes de instalar.
 info "Regenerando doas.conf para ${PANEL_USER}"

@@ -390,8 +390,19 @@ cp -rf "$PANEL_PATH/preconf/"* "$PANEL_CONF/"
 
 # Directorios de datos
 mkdir -p "$PANEL_DATA/hostdata"
+# backups/: escribe el panel (backupmgr) y los scripts root de vhost-backup.
 mkdir -p "$PANEL_DATA/backups"
+chown ${PANEL_USER}:www "$PANEL_DATA/backups"
+chmod 2770 "$PANEL_DATA/backups"
 mkdir -p "$PANEL_DATA/temp"
+# ssl/sencrypt: cuentas ACME y certificados (Lescript escribe como usuario del panel).
+mkdir -p "$PANEL_DATA/ssl/sencrypt"
+chown -R ${PANEL_USER}:www "$PANEL_DATA/ssl"
+chmod 750 "$PANEL_DATA/ssl" "$PANEL_DATA/ssl/sencrypt"
+# updates/: lo escriben scripts root (panel_update, sys_update_check); el panel solo lee.
+mkdir -p "$PANEL_DATA/updates"
+chown root:www "$PANEL_DATA/updates"
+chmod 755 "$PANEL_DATA/updates"
 mkdir -p "$PANEL_DATA/sessions"
 # Dir de reto ACME COMPARTIDO (Let's Encrypt HTTP-01): el panel escribe el token aquí y Apache
 # lo sirve vía un Alias en los vhosts :80. Evita la fragilidad de permisos del .well-known
@@ -423,7 +434,9 @@ chmod 750 "$PANEL_DATA/sieve"
 
 # Permisos del panel
 chown -R root:wheel "$PANEL_PATH"
-chown -R www:www    "$PANEL_PATH/etc/tmp"
+# etc/tmp lo escribe el usuario del panel (storage de plantillas, temporales de backup/SSL).
+chown -R ${PANEL_USER}:www "$PANEL_PATH/etc/tmp"
+chmod    2775       "$PANEL_PATH/etc/tmp"
 chmod    1777       "$PANEL_DATA/temp"
 chmod    733        "$PANEL_DATA/sessions"
 chmod     +t        "$PANEL_DATA/sessions"
@@ -433,15 +446,23 @@ chown www:www       "$PANEL_DATA/logs/roundcube"
 touch "$PANEL_DATA/logs/bulwark.log" "$PANEL_DATA/logs/bulwark-access.log" \
       "$PANEL_DATA/logs/bulwark-error.log" "$PANEL_DATA/logs/bulwark-bandwidth.log" \
       "$PANEL_DATA/logs/php_errors.log"
-chown www:www "$PANEL_DATA/logs/bulwark.log" "$PANEL_DATA/logs/bulwark-access.log" \
+# Logs que append-ea el proceso FPM del panel → usuario del panel, escritura de dueño.
+chown ${PANEL_USER}:www "$PANEL_DATA/logs/bulwark.log" "$PANEL_DATA/logs/bulwark-access.log" \
               "$PANEL_DATA/logs/bulwark-error.log" "$PANEL_DATA/logs/bulwark-bandwidth.log" \
               "$PANEL_DATA/logs/php_errors.log"
+chmod 660 "$PANEL_DATA/logs/bulwark.log" "$PANEL_DATA/logs/bulwark-access.log" \
+          "$PANEL_DATA/logs/bulwark-error.log" "$PANEL_DATA/logs/bulwark-bandwidth.log" \
+          "$PANEL_DATA/logs/php_errors.log"
 
-# Directorio de ficheros de petición privilegiada (fw, hosting) — root:www 750
-# Los scripts privilegiados leen desde aquí; www escribe; nadie más accede.
+# Directorio de ficheros de petición privilegiada (fw, hosting, imapsync...) — root:<panel> 2770.
+# El panel (usuario propio) crea las peticiones; los wrappers root las consumen. 'www' no
+# tiene acceso (pueden contener credenciales, p.ej. imapsync/*.pass) y el setgid hereda el grupo.
 mkdir -p "$PANEL_DATA/run"
-chown root:www "$PANEL_DATA/run"
-chmod 750 "$PANEL_DATA/run"
+chown root:${PANEL_USER} "$PANEL_DATA/run"
+chmod 2770 "$PANEL_DATA/run"
+mkdir -p "$PANEL_DATA/run/imapsync"
+chown ${PANEL_USER}:www "$PANEL_DATA/run/imapsync"
+chmod 2770 "$PANEL_DATA/run/imapsync"
 
 # Logs del cortafuegos (fw_status.json lo escribe fw_status_dump.sh como root, legible por www)
 mkdir -p "$PANEL_DATA/logs/fw"
@@ -1312,25 +1333,32 @@ grep -q '^Checks ' "$FC_CONF" && \
     sed -i '' 's/^Checks .*/Checks 4/' "$FC_CONF" || \
     echo "Checks 4" >> "$FC_CONF"
 
-# Directorio Bulwark para ClamAV (www:www)
+# Directorios Bulwark para ClamAV y cron del panel. Los escribe el usuario del panel
+# (FPM); los scripts de escaneo/instalación corren como root y leen sin restricción.
 mkdir -p /var/bulwark/cron
-chown www:www /var/bulwark/cron
-chmod 755 /var/bulwark/cron
+chown ${PANEL_USER}:www /var/bulwark/cron
+chmod 2770 /var/bulwark/cron
 mkdir -p /var/bulwark/clamav/quarantine
-chown -R www:www /var/bulwark/clamav
-chmod 750 /var/bulwark/clamav
+chown ${PANEL_USER}:www /var/bulwark/clamav
+chmod 2770 /var/bulwark/clamav
+# quarantine la llenan los scripts root (clamav_scan_*); solo root entra.
+chown root:wheel /var/bulwark/clamav/quarantine
 chmod 700 /var/bulwark/clamav/quarantine
 
-# Fichero dinámico antivirus.conf — vacío (desactivado por defecto)
+# Ficheros dinámicos de ClamAV — los escribe clamav_admin (usuario del panel).
 touch /var/bulwark/clamav/antivirus.conf
 echo "4"       > /var/bulwark/clamav/freshclam_checks.conf
 echo "disable" > /var/bulwark/clamav/scan_schedule.conf
-chown www:www /var/bulwark/clamav/antivirus.conf \
-              /var/bulwark/clamav/freshclam_checks.conf \
-              /var/bulwark/clamav/scan_schedule.conf
+chown ${PANEL_USER}:www /var/bulwark/clamav/antivirus.conf \
+               /var/bulwark/clamav/freshclam_checks.conf \
+               /var/bulwark/clamav/scan_schedule.conf
 chmod 640 /var/bulwark/clamav/antivirus.conf \
           /var/bulwark/clamav/freshclam_checks.conf \
           /var/bulwark/clamav/scan_schedule.conf
+# scan_results.log lo append-ean los scripts de escaneo (root); el panel lo lee.
+touch /var/bulwark/clamav/scan_results.log
+chown root:www /var/bulwark/clamav/scan_results.log
+chmod 640 /var/bulwark/clamav/scan_results.log
 
 # Fichero estático rspamd (root): include dinámico
 cat > /usr/local/etc/rspamd/local.d/antivirus.conf << 'RSAV'
@@ -1670,13 +1698,14 @@ cc -O2 -o "$PANEL_PATH/bin/bulwark_maillimit_helper" "$PANEL_PATH/src/bulwark_ma
 chown root:maillimit "$PANEL_PATH/bin/bulwark_maillimit_helper"
 chmod 2755 "$PANEL_PATH/bin/bulwark_maillimit_helper"
 
-# Config del panel (limit/whitelist www-writable; redis_pass es solo del grupo maillimit).
+# Config del panel (limit/whitelist los escribe el usuario del panel; redis_pass es
+# secreto exclusivo del grupo maillimit).
 mkdir -p /var/bulwark/mail_limits
 [ -f /var/bulwark/mail_limits/limit ]     || printf '200\n' > /var/bulwark/mail_limits/limit
 [ -f /var/bulwark/mail_limits/whitelist ] || : > /var/bulwark/mail_limits/whitelist
-chmod 755 /var/bulwark/mail_limits
-chown www:www /var/bulwark/mail_limits /var/bulwark/mail_limits/limit /var/bulwark/mail_limits/whitelist
-chmod 644 /var/bulwark/mail_limits/limit /var/bulwark/mail_limits/whitelist
+chown ${PANEL_USER}:www /var/bulwark/mail_limits /var/bulwark/mail_limits/limit /var/bulwark/mail_limits/whitelist
+chmod 2770 /var/bulwark/mail_limits
+chmod 640 /var/bulwark/mail_limits/limit /var/bulwark/mail_limits/whitelist
 # Reafirmar la credencial (no debe quedar en www:www).
 chown root:maillimit /var/bulwark/mail_limits/redis_pass
 chmod 640 /var/bulwark/mail_limits/redis_pass
@@ -2042,12 +2071,12 @@ fi
 # del panel fallaba al escribir el token del reto. Se pre-crea el directorio del reto escribible
 # por el panel (bulwark:www, setgid). Apache lo sirve por HTTP sin redirección a HTTPS.
 mkdir -p "$PANEL_PATH/.well-known/acme-challenge"
-chown -R bulwark:www "$PANEL_PATH/.well-known"
+chown -R ${PANEL_USER}:www "$PANEL_PATH/.well-known" 2>/dev/null || chown -R bulwark:www "$PANEL_PATH/.well-known"
 chmod 2775 "$PANEL_PATH/.well-known" "$PANEL_PATH/.well-known/acme-challenge"
 
-# etc/tmp: PHP escribe aquí (cachés, etc.)
-chown -R www:www "$PANEL_PATH/etc/tmp"
-chmod -R 755 "$PANEL_PATH/etc/tmp"
+# etc/tmp: el panel (usuario propio) escribe aquí (cachés, temporales de backup/SSL)
+chown -R ${PANEL_USER}:www "$PANEL_PATH/etc/tmp"
+chmod 2775 "$PANEL_PATH/etc/tmp"
 
 # Mailstore raíz: SGID para que subdirectorios hereden grupo vmail
 chown vmail:vmail "$PANEL_DATA/vmail"
@@ -2087,20 +2116,25 @@ $MYSQL bulwark_core -e "UPDATE x_settings SET so_value_tx='$SYSMAIL_VAL' WHERE s
 # correo a cuentas de sistema se difiere con "alias database unavailable".
 newaliases 2>/dev/null || true
 
-# Logs de Apache / panel: www escribe
-chown www:www "$PANEL_DATA/logs/bulwark.log" \
+# Logs de Apache / panel: roundcube lo escribe www; los del panel, el usuario del panel.
+chown www:www "$PANEL_DATA/logs/roundcube"
+chown ${PANEL_USER}:www "$PANEL_DATA/logs/bulwark.log" \
               "$PANEL_DATA/logs/bulwark-access.log" \
               "$PANEL_DATA/logs/bulwark-error.log" \
               "$PANEL_DATA/logs/bulwark-bandwidth.log" \
-              "$PANEL_DATA/logs/php_errors.log" \
-              "$PANEL_DATA/logs/roundcube"
+              "$PANEL_DATA/logs/php_errors.log"
+chmod 660 "$PANEL_DATA/logs/bulwark.log" \
+          "$PANEL_DATA/logs/bulwark-access.log" \
+          "$PANEL_DATA/logs/bulwark-error.log" \
+          "$PANEL_DATA/logs/bulwark-bandwidth.log" \
+          "$PANEL_DATA/logs/php_errors.log"
 
-# Sesiones PHP
-chown www:www "$PANEL_DATA/sessions"
-chmod 733 "$PANEL_DATA/sessions"
+# Sesiones PHP (las escribe el proceso FPM del panel)
+chown ${PANEL_USER}:www "$PANEL_DATA/sessions"
+chmod 1733 "$PANEL_DATA/sessions"
 
-# Reto ACME compartido: el panel (bulwark) escribe el token, Apache (grupo www) lo lee.
-chown bulwark:www "$PANEL_DATA/acme-challenge" 2>/dev/null || chown www:www "$PANEL_DATA/acme-challenge"
+# Reto ACME compartido: el panel escribe el token, Apache (grupo www) lo lee.
+chown ${PANEL_USER}:www "$PANEL_DATA/acme-challenge" 2>/dev/null || chown www:www "$PANEL_DATA/acme-challenge"
 chmod 2775 "$PANEL_DATA/acme-challenge"
 
 # Conf sensibles: root:dovecot solo lectura
