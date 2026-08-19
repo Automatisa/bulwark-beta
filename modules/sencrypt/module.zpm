@@ -31,6 +31,10 @@
 	<div class="zgrid_wrapper">
 		<h3><: Extra certificate names for :> <@ SansDomain @></h3>
 		<p><@ SansIntro @></p>
+	</div>
+	<!-- Estado: qué cubre el cert vigente y qué se firmaría en la próxima emisión. -->
+	<@ SansStatus @>
+	<div class="zgrid_wrapper">
 		<form action="./?module=sencrypt&action=SaveVhostSans" method="post">
 			<@ CSFR_Tag @>
 			<input type="hidden" name="inDomain" value="<@ SansDomain @>">
@@ -38,11 +42,13 @@
 				<tr>
 					<th><: Include :></th>
 					<th><: Subdomain :></th>
+					<th><: Status :></th>
 				</tr>
 				<% loop Sans_List %>
 					<tr>
 						<td>{! San_Checkbox !}</td>
 						<td><& San_Fqdn &></td>
+						<td><& San_Status &></td>
 					</tr>
 				<% endloop %>
 			</table>

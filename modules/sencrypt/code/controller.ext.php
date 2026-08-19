@@ -946,13 +946,62 @@ class module_controller extends ctrl_module {
 		if (!$d) { return ''; }
 		return ui_language::translate('Only subdomains that exist in DNS and do not already have their own certificate are listed.')
 			. ' ' . ui_language::translate('If you remove one from DNS it is dropped from the certificate automatically on the next renewal.')
-			. ' ' . ui_language::translate('Domain aliases (Domains module) are added to the certificate automatically when the panel manages their DNS zone.');
+			. ' ' . ui_language::translate('Domain aliases (Domains module) are added to the certificate automatically when the panel manages their DNS zone.')
+			. ' ' . ui_language::translate('Checked subdomains are the ones already selected: they will be included in the certificate on the next issue; uncheck one to remove it.');
 	}
 
-	# Filas de la tabla de la hoja: subdominios elegibles + estado (marcado si ya está en el cert).
+	# Nombres (SAN) del certificado LE VIGENTE del dominio en disco (array; vacío si no hay cert).
+	private static function leCertSansForUser($domain, $username) {
+		$p = ctrl_options::GetSystemOption('hosted_dir') . $username . '/ssl/sencrypt/letsencrypt/' . $domain . '/cert.pem';
+		if (!is_file($p)) { return array(); }
+		$ci = @openssl_x509_parse(@file_get_contents($p));
+		if (!is_array($ci) || empty($ci['extensions']['subjectAltName'])) { return array(); }
+		$out = array();
+		foreach (explode(',', $ci['extensions']['subjectAltName']) as $s) {
+			$s = trim(preg_replace('/^DNS:/i', '', trim($s)));
+			if ($s !== '' && !in_array($s, $out, true)) { $out[] = $s; }
+		}
+		return $out;
+	}
+
+	# Resumen de estado de la hoja de SANs: qué nombres cubre el cert VIGENTE y cuáles se firmarían
+	# en la próxima (re)emisión (prospectiveLeNames: la MISMA fuente que usa el daemon). Así el
+	# usuario ve qué hay seleccionado sin adivinarlo, y añade/quita con los checkboxes.
+	static function getSansStatus() {
+		$d = self::sansDomainForUser();
+		if (!$d) { return ''; }
+		global $zdbh;
+		$cu = ctrl_users::GetUserDetail();
+		$q = $zdbh->prepare("SELECT vh_id_pk, vh_name_vc, vh_acc_fk, vh_type_in, vh_le_wildcard_in, vh_le_extra_sans
+		                     FROM x_vhosts WHERE vh_name_vc=:d AND vh_acc_fk=:u AND vh_deleted_ts IS NULL AND vh_type_in=1");
+		$q->execute(array(':d' => $d, ':u' => (int)$cu['userid']));
+		$vh = $q->fetch(PDO::FETCH_ASSOC);
+		if (!$vh) { return ''; }
+		$certNames = self::leCertSansForUser($d, $cu['username']);
+		$next = self::prospectiveLeNames($vh);
+		$html = '<div class="zgrid_wrapper"><table class="table">'
+		      . '<tr><th>' . ui_language::translate('Current certificate') . '</th><td>'
+		      . ($certNames ? htmlspecialchars(implode(', ', $certNames), ENT_QUOTES, 'UTF-8')
+		                    : '<i>' . ui_language::translate('No certificate issued yet.') . '</i>')
+		      . '</td></tr>'
+		      . '<tr><th>' . ui_language::translate('Names on next issue') . '</th><td>'
+		      . htmlspecialchars(implode(', ', $next), ENT_QUOTES, 'UTF-8') . '</td></tr>'
+		      . '</table>';
+		# El cert vigente es wildcard pero el toggle está OFF: avisar de que en la renovación se
+		# perderá *.dom (el daemon firma exactamente prospectiveLeNames).
+		if (in_array('*.' . $d, $certNames, true) && (int)($vh['vh_le_wildcard_in'] ?? 0) !== 1) {
+			$html .= '<p class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>'
+			       . ui_language::translate('The current certificate covers all subdomains (wildcard) but the Wildcard option is OFF: on the next renewal it will be replaced by a certificate WITHOUT the wildcard.')
+			       . ' ' . ui_language::translate('Turn Wildcard ON in the certificate list if you want to keep it.') . '</p>';
+		}
+		return $html . '</div>';
+	}
+
+	# Filas de la tabla de la hoja: subdominios elegibles + checkbox (marcado si ya está en la
+	# selección guardada) + estado en el cert VIGENTE, para ver de un vistazo qué hay seleccionado.
 	static function getSans_List() {
 		$d = self::sansDomainForUser();
-		if (!$d) { return array(array('San_Fqdn' => ui_language::translate('Domain not valid.'), 'San_Checkbox' => NULL)); }
+		if (!$d) { return array(array('San_Fqdn' => ui_language::translate('Domain not valid.'), 'San_Checkbox' => NULL, 'San_Status' => NULL)); }
 		global $zdbh;
 		$cu = ctrl_users::GetUserDetail();
 		$elig = self::getEligibleSubdomains($d, $cu['userid']);
@@ -960,13 +1009,22 @@ class module_controller extends ctrl_module {
 		$q->execute(array(':d' => $d, ':u' => (int)$cu['userid']));
 		$sel = array_filter(array_map('trim', explode(',', strtolower((string)$q->fetchColumn()))));
 		if (empty($elig)) {
-			return array(array('San_Fqdn' => ui_language::translate('No eligible subdomains in DNS. Create a plain DNS record (a subdomain with its own site gets its own certificate).'), 'San_Checkbox' => NULL));
+			return array(array('San_Fqdn' => ui_language::translate('No eligible subdomains in DNS. Create a plain DNS record (a subdomain with its own site gets its own certificate).'), 'San_Checkbox' => NULL, 'San_Status' => NULL));
 		}
+		$certNames = self::leCertSansForUser($d, $cu['username']);
+		$wildcardCert = in_array('*.' . $d, $certNames, true);
 		$res = array();
 		foreach ($elig as $fqdn) {
 			$h = htmlspecialchars($fqdn, ENT_QUOTES, 'UTF-8');
 			$chk = in_array($fqdn, $sel, true) ? ' checked' : '';
-			$res[] = array('San_Fqdn' => $fqdn, 'San_Checkbox' => '<input type="checkbox" name="inSans[]" value="' . $h . '"' . $chk . '>');
+			if (in_array($fqdn, $certNames, true)) {
+				$st = ui_language::translate('In current certificate');
+			} elseif ($wildcardCert) {
+				$st = ui_language::translate('Covered by wildcard');
+			} else {
+				$st = '—';
+			}
+			$res[] = array('San_Fqdn' => $fqdn, 'San_Checkbox' => '<input type="checkbox" name="inSans[]" value="' . $h . '"' . $chk . '>', 'San_Status' => $st);
 		}
 		return $res;
 	}
