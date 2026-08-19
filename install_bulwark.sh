@@ -1401,6 +1401,35 @@ RSFA
 cat > /usr/local/etc/rspamd/local.d/actions.conf << 'RSAC'
 .include(try=true,priority=10) "/var/bulwark/clamav/virus_subject.conf"
 RSAC
+# Aviso de virus VISIBLE en modo "add header" de clamav_admin: el modulo
+# milter_headers reescribe el asunto a "***VIRUS*** <asunto>" (rutina custom Lua
+# condicionada a CLAM_VIRUS) y anade la cabecera X-Virus con el nombre del virus
+# (rutina integrada x-virus). skip_local/skip_authenticated=false para que aplique
+# tambien a envios locales/autenticados; las rutinas solo actuan si hay CLAM_VIRUS.
+cat > /usr/local/etc/rspamd/local.d/milter_headers.conf << 'RSMH'
+use = ["x-virus", "clam_virus_subject"];
+skip_local = false;
+skip_authenticated = false;
+routines {
+    x-virus {
+        symbols = ["CLAM_VIRUS"];
+        status_infected = "yes";
+    }
+}
+custom {
+    clam_virus_subject = <<EOD
+return function(task, common_meta)
+  if task:has_symbol('CLAM_VIRUS') then
+    local subj = task:get_header('Subject') or ''
+    if not subj:match('^%*%*%*VIRUS%*%*%*') then
+      return nil, { ['Subject'] = '***VIRUS*** ' .. subj }, { ['Subject'] = 0 }, {}
+    end
+  end
+  return nil, {}, {}, {}
+end
+EOD
+}
+RSMH
 
 # Scripts privilegiados de ClamAV: vienen del git clone (bin/clamav_*.sh),
 # ya no se generan aquí (así están versionados y no se pisan versiones nuevas

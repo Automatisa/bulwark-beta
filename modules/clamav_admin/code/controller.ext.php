@@ -170,17 +170,18 @@ class module_controller extends ctrl_module
         // infectado acumula ademas puntuacion por adjuntos sospechosos (MIME_BAD_EXTENSION,
         // EXE_IN_ARCHIVE...) el score supera el umbral de reject (15) y rspamd lo rechaza
         // en SMTP aunque el admin eligiera entregarlo marcado. force_actions SIN "least"
-        // fija un passthrough absoluto: con virus, la accion final es siempre
-        // "rewrite subject" (>= "add header"): el mensaje conserva X-Spam: Yes (el sieve
-        // global lo deposita en la carpeta Spam) y el asunto visible se reescribe a
-        // "***VIRUS*** <asunto original>" como aviso de virus para el destinatario.
+        // fija un passthrough absoluto: con virus, la accion final es siempre "add header":
+        // el mensaje lleva X-Spam: Yes (el sieve global lo deposita en la carpeta Spam) y
+        // nunca se rechaza. El AVISO VISIBLE de virus (asunto "***VIRUS*** <asunto>" y
+        // cabecera X-Virus) lo anade el modulo milter_headers con una rutina custom
+        // condicionada a CLAM_VIRUS (local.d/milter_headers.conf, estatico).
         // Va en su propio fichero dinamico: es una seccion de primer nivel de rspamd.
         $fa  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
         if ($action !== 'reject') {
             $fa .= "rules {\n";
             $fa .= "    clam_virus_deliver_marked {\n";
             $fa .= "        expression = \"CLAM_VIRUS\";\n";
-            $fa .= "        action     = \"rewrite subject\";\n";
+            $fa .= "        action     = \"add header\";\n";
             $fa .= "        message    = \"clamav: virus found - entregado marcado con aviso de virus (politica del panel)\";\n";
             $fa .= "    }\n";
             $fa .= "}\n";
@@ -188,21 +189,15 @@ class module_controller extends ctrl_module
         if (!@file_put_contents(self::FORCE_ACTIONS_CONF, $fa)) {
             return false;
         }
-        // Patron de asunto del aviso de virus: va en la seccion de primer nivel
-        // "actions" (local.d/actions.conf funde su include ahi). NO puede ir en
-        // force_actions.conf: local.d/force_actions.conf lo fundiria dentro de la
-        // seccion "force_actions" y rspamd no lo aplicaria (el asunto quedaria con
-        // el patron por defecto en vez de "***VIRUS*** %s").
+        // El aviso visible de virus NO se hace con la accion "rewrite subject": rspamd
+        // exige score por accion (9999 = inalcanzable) y el patron de asunto solo se
+        // aplicaba con el formato por defecto "*** SPAM ***" (sin X-Spam: Yes, el sieve
+        // no lo llevaba a Spam). En su lugar el modulo milter_headers (estatico,
+        // local.d/milter_headers.conf) reescribe el asunto a "***VIRUS*** <asunto>" y
+        // anade X-Virus cuando existe CLAM_VIRUS. Este include de la seccion "actions"
+        // queda sin reglas.
         $vs  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
-        if ($action !== 'reject') {
-            // rspamd exige umbral (score) en cada accion de "actions"; 9999 lo hace
-            // inalcanzable por puntuacion: la accion solo se aplica via force_actions
-            // cuando existe CLAM_VIRUS. Sin score, configtest da syntax BAD.
-            $vs .= "rewrite_subject {\n";
-            $vs .= "    score = 9999;\n";
-            $vs .= "    subject = \"***VIRUS*** %s\";\n";
-            $vs .= "}\n";
-        }
+        $vs .= "# El aviso de virus visible lo aplica milter_headers (local.d/milter_headers.conf).\n";
         return @file_put_contents(self::VIRUS_SUBJECT_CONF, $vs) !== false;
     }
 
