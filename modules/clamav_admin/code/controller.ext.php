@@ -195,7 +195,11 @@ class module_controller extends ctrl_module
         // el patron por defecto en vez de "***VIRUS*** %s").
         $vs  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
         if ($action !== 'reject') {
+            // rspamd exige umbral (score) en cada accion de "actions"; 9999 lo hace
+            // inalcanzable por puntuacion: la accion solo se aplica via force_actions
+            // cuando existe CLAM_VIRUS. Sin score, configtest da syntax BAD.
             $vs .= "rewrite_subject {\n";
+            $vs .= "    score = 9999;\n";
             $vs .= "    subject = \"***VIRUS*** %s\";\n";
             $vs .= "}\n";
         }
