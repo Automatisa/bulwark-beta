@@ -378,6 +378,28 @@ function WriteVhostConfigFile() {
 				$line .= "</VirtualHost>" . fs_filehandler::NewLine();
 				$line .= fs_filehandler::NewLine();
 			}
+
+			# REDIRECCION HTTPS webmail.<dominio> -> webmail del servidor. Debe atarse a las
+			# MISMAS direcciones que el vhost SSL del panel ($panelAddrs): Apache resuelve el
+			# name-matching dentro del grupo IP:puerto de la IP de llegada, y un vhost *:443
+			# nunca es candidato si hay vhosts con IP concreta (caería al fallback del panel).
+			# No puede existir un cert válido para webmail.<cualquier-dominio>, así que se sirve
+			# el cert del panel (el navegador avisará del mismatch; tras continuar llega al
+			# redirect). Un vhost EXACTO webmail.<dominio> de un cliente tiene prioridad.
+			$wmSslPortStr = ((string)$panelSslPort !== '443') ? (':' . $panelSslPort) : '';
+			$wmSslTarget  = 'https://' . ctrl_options::GetSystemOption('bulwark_domain') . $wmSslPortStr . '/etc/apps/webmail/';
+			$line .= "# REDIRECCION webmail.<dominio> -> webmail del servidor (" . $wmSslTarget . ")" . fs_filehandler::NewLine();
+			$line .= "<VirtualHost " . $panelAddrs . ">" . fs_filehandler::NewLine();
+			$line .= "ServerName webmail-redirect.invalid" . fs_filehandler::NewLine();
+			$line .= "ServerAlias webmail.*" . fs_filehandler::NewLine();
+			$line .= "SSLEngine On" . fs_filehandler::NewLine();
+			$line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
+			$line .= "SSLCertificateFile " . $panelCert . fs_filehandler::NewLine();
+			$line .= "SSLCertificateKeyFile " . $panelKey . fs_filehandler::NewLine();
+			$line .= 'CustomLog "' . ctrl_options::GetSystemOption('log_dir') . 'webmail-redirect-access.log" ' . ctrl_options::GetSystemOption('access_log_format') . fs_filehandler::NewLine();
+			$line .= "Redirect permanent / " . $wmSslTarget . fs_filehandler::NewLine();
+			$line .= "</VirtualHost>" . fs_filehandler::NewLine();
+			$line .= fs_filehandler::NewLine();
 		}
 
 		# Panel en :80 segun la opcion panel_force_https:
@@ -486,25 +508,6 @@ function WriteVhostConfigFile() {
     $line .= "Redirect permanent / " . $wmTarget . fs_filehandler::NewLine();
     $line .= "</VirtualHost>" . fs_filehandler::NewLine();
     $line .= fs_filehandler::NewLine();
-
-    if ($wmSslTx != null
-        && preg_match('/^SSLCertificateFile\s+(\S+)/m', $wmSslTx, $wmCertM)
-        && preg_match('/^SSLCertificateKeyFile\s+(\S+)/m', $wmSslTx, $wmKeyM)) {
-        # HTTPS: no puede existir un cert válido para webmail.<cualquier-dominio>, así que se
-        # sirve el cert del panel (el navegador avisará del mismatch; tras continuar llega al
-        # redirect). Sin este vhost, https://webmail.<dominio> caería al fallback SSL del panel.
-        $line .= "<VirtualHost *:" . ctrl_options::GetSystemOption('bulwark_port') . ">" . fs_filehandler::NewLine();
-        $line .= "ServerName webmail-redirect.invalid" . fs_filehandler::NewLine();
-        $line .= "ServerAlias webmail.*" . fs_filehandler::NewLine();
-        $line .= "SSLEngine On" . fs_filehandler::NewLine();
-        $line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
-        $line .= "SSLCertificateFile " . $wmCertM[1] . fs_filehandler::NewLine();
-        $line .= "SSLCertificateKeyFile " . $wmKeyM[1] . fs_filehandler::NewLine();
-        $line .= 'CustomLog "' . ctrl_options::GetSystemOption('log_dir') . 'webmail-redirect-access.log" ' . ctrl_options::GetSystemOption('access_log_format') . fs_filehandler::NewLine();
-        $line .= "Redirect permanent / " . $wmTarget . fs_filehandler::NewLine();
-        $line .= "</VirtualHost>" . fs_filehandler::NewLine();
-        $line .= fs_filehandler::NewLine();
-    }
 
     $line .= "################################################################" . fs_filehandler::NewLine();
     $line .= "# Bulwark generated VHOST configurations below....." . fs_filehandler::NewLine();
