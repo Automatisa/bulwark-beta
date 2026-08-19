@@ -1,15 +1,27 @@
 #!/bin/sh
-# Escanea las rutas configuradas con clamdscan y delega el procesamiento
-# de archivos infectados al post-procesador PHP (cuarentena por usuario,
+# Escanea las rutas configuradas con clamscan (motor autónomo, ejecutado como root) y delega
+# el procesamiento de archivos infectados al post-procesador PHP (cuarentena por usuario,
 # email, Redis). Ejecutado como root por daemon(8) vía clamav_scan_launch.sh.
+# IMPORTANTE: se usa clamscan, NO clamdscan: clamdscan delega la lectura de ficheros en el
+# demonio clamd (usuario 'clamav'), que no puede leer hostdata/<usuario> (h_x:www 770),
+# vmail (vmail:vmail 770) ni backups (panel:www 2770) → "File path check failure". Como root,
+# clamscan lo lee todo sin ampliar grupos ni permisos.
 LOG=/var/bulwark/clamav/scan_results.log
 QUARANTINE=/var/bulwark/clamav/quarantine
 PATHS_CONF=/var/bulwark/clamav/scan_paths.conf
 INFECTED_TMP=/var/bulwark/run/clamav_infected_$$.tmp
 POST_SCAN=/usr/local/bulwark/bin/clamav_post_scan.php
 
+# Usuario del panel (para el grupo de la cuarentena): del pool FPM, como las migraciones.
+PANEL_USER=$(awk -F= '/^[[:space:]]*user[[:space:]]*=/{gsub(/[[:space:]]/,"",$2);print $2;exit}' \
+             /usr/local/etc/php-fpm.d/www.conf 2>/dev/null)
+[ -n "$PANEL_USER" ] || PANEL_USER=bulwark
+
+# quarantine: root escribe (post-scan/restore); el panel lista/descarga/borra en la UI vía
+# grupo (770). www/Apache sin acceso al malware.
 mkdir -p "$QUARANTINE"
-chmod 700 "$QUARANTINE"
+chown root:"$PANEL_USER" "$QUARANTINE" 2>/dev/null || true
+chmod 770 "$QUARANTINE"
 
 # Leer rutas desde la configuración — whitelist estricta
 SCAN_PATHS=""
@@ -30,7 +42,7 @@ echo "=== Rutas: $SCAN_PATHS ===" >> "$LOG"
 
 # Ejecutar escaneo — sin --move para que el post-procesador gestione el enrutamiento
 # shellcheck disable=SC2086
-SCAN_OUTPUT=$(/usr/local/bin/clamdscan \
+SCAN_OUTPUT=$(/usr/local/bin/clamscan \
     --infected \
     --no-summary \
     --exclude-dir=ssl \
@@ -57,4 +69,4 @@ echo "=== Escaneo finalizado: $(date) ===" >> "$LOG"
 
 # Limitar log a las últimas 1000 líneas
 tail -1000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
-chmod 644 "$LOG"
+chmod 640 "$LOG"

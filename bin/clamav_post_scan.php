@@ -19,6 +19,22 @@ define('REDIS_PORT',        6379);
 
 require_once BULWARK_ROOT . '/cnf/db.php';
 
+// ---- Usuario del panel (grupo de la cuarentena de admin) ----------------
+
+function panelUser(): string {
+    static $u = null;
+    if ($u === null) {
+        $u = 'bulwark';
+        $conf = @file('/usr/local/etc/php-fpm.d/www.conf');
+        if ($conf) {
+            foreach ($conf as $line) {
+                if (preg_match('/^\s*user\s*=\s*(\S+)/', $line, $m)) { $u = $m[1]; break; }
+            }
+        }
+    }
+    return $u;
+}
+
 // ---- DB / Redis helpers ------------------------------------------------
 
 function dbConnect(): PDO {
@@ -96,14 +112,19 @@ function quarantineFile(string $filePath, string $signature, ?array $owner): arr
     $basename = basename($filePath);
     $qname    = $basename . '.' . $ts;
 
-    $qDir = ($owner !== null)
-        ? HOSTDATA_ROOT . '/' . $owner['user'] . '/quarantine'
-        : ADMIN_QUARANTINE;
+    $isAdmin = ($owner === null);
+    $qDir = $isAdmin
+        ? ADMIN_QUARANTINE
+        : HOSTDATA_ROOT . '/' . $owner['user'] . '/quarantine';
 
     if (!is_dir($qDir)) {
-        mkdir($qDir, 0750, true);
-        chown($qDir, 'www');
-        chgrp($qDir, 'www');
+        mkdir($qDir, $isAdmin ? 0770 : 0750, true);
+        if ($isAdmin) { chown($qDir, 'root'); chgrp($qDir, panelUser()); }
+        else          { chown($qDir, 'www');  chgrp($qDir, 'www'); }
+    } elseif ($isAdmin) {
+        // Estado canónico de la cuarentena de admin: root escribe (post-scan/restore);
+        // el panel lista/descarga/borra en la UI vía grupo; www/Apache sin acceso.
+        @chgrp($qDir, panelUser()); @chmod($qDir, 0770);
     }
 
     $dest = $qDir . '/' . $qname;
@@ -112,8 +133,8 @@ function quarantineFile(string $filePath, string $signature, ?array $owner): arr
     }
 
     chmod($dest, 0640);
-    chown($dest, 'www');
-    chgrp($dest, 'www');
+    if ($isAdmin) { chown($dest, 'root'); chgrp($dest, panelUser()); }
+    else          { chown($dest, 'www');  chgrp($dest, 'www'); }
 
     $meta = [
         'original_path' => $filePath,
@@ -128,8 +149,8 @@ function quarantineFile(string $filePath, string $signature, ?array $owner): arr
     $metaFile = $dest . '.json';
     file_put_contents($metaFile, json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
     chmod($metaFile, 0640);
-    chown($metaFile, 'www');
-    chgrp($metaFile, 'www');
+    if ($isAdmin) { chown($metaFile, 'root'); chgrp($metaFile, panelUser()); }
+    else          { chown($metaFile, 'www');  chgrp($metaFile, 'www'); }
 
     return ['ok' => true, 'dest' => $dest, 'qname' => $qname, 'meta' => $meta];
 }

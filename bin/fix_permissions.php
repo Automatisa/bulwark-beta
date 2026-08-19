@@ -272,8 +272,10 @@ if (is_dir("$PANEL_DATA/run/imapsync"))
 // cron/: staging de crontab que escribe el panel (www.cron) e instala cron_install.sh.
 check_path("$PANEL_DATA/cron", 02770, $PANEL_USER, 'www');
 
-// clamav/: configs las escribe clamav_admin (panel); quarantine y scan_results.log
-// son territorio root (los scripts de escaneo corren privilegiados).
+// clamav/: configs las escribe clamav_admin (panel); scan_results.log es territorio root
+// (los scripts de escaneo corren privilegiados). quarantine: root escribe (post-scan/restore)
+// pero la UI de clamav_admin lista/descarga/borra directamente como usuario del panel, así que
+// el grupo del dir es el del panel (770); www/Apache sin acceso al malware.
 if (is_dir("$PANEL_DATA/clamav")) {
     check_path("$PANEL_DATA/clamav", 02770, $PANEL_USER, 'www');
     foreach (['antivirus.conf', 'freshclam_checks.conf', 'scan_paths.conf',
@@ -282,7 +284,7 @@ if (is_dir("$PANEL_DATA/clamav")) {
             check_path("$PANEL_DATA/clamav/$cc", 0640, $PANEL_USER, 'www');
     }
     if (file_exists("$PANEL_DATA/clamav/quarantine"))
-        check_path("$PANEL_DATA/clamav/quarantine", 0700, 'root', 'wheel');
+        check_path("$PANEL_DATA/clamav/quarantine", 0770, 'root', $PANEL_USER);
     if (file_exists("$PANEL_DATA/clamav/scan_results.log"))
         check_path("$PANEL_DATA/clamav/scan_results.log", 0640, 'root', 'www');
 }

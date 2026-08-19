@@ -29,8 +29,10 @@ INFECTED_TMP="$SCAN_REQUESTS/${USERNAME}_infected_$$.tmp"
 
 echo "=== Escaneo usuario $USERNAME: $(date) ===" >> "$LOG"
 
-# Escanear solo el directorio del usuario, excluyendo cuarentena y logs
-SCAN_OUTPUT=$(/usr/local/bin/clamdscan \
+# Escaneo antivirus — usa clamscan (motor autónomo como root), NO clamdscan: clamdscan delega
+# la lectura en el demonio clamd (usuario 'clamav'), que no puede leer hostdata/<usuario>
+# (h_x:www 770) → "File path check failure". clamscan como root lo lee todo.
+SCAN_OUTPUT=$(/usr/local/bin/clamscan \
     --infected \
     --no-summary \
     $SCAN_DIR 2>/dev/null)
@@ -49,4 +51,4 @@ fi
 
 echo "=== Fin escaneo $USERNAME: $(date) ===" >> "$LOG"
 tail -1000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
-chmod 644 "$LOG"
+chmod 640 "$LOG"

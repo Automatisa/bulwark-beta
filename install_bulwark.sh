@@ -1342,9 +1342,10 @@ chmod 2770 /var/bulwark/cron
 mkdir -p /var/bulwark/clamav/quarantine
 chown ${PANEL_USER}:www /var/bulwark/clamav
 chmod 2770 /var/bulwark/clamav
-# quarantine la llenan los scripts root (clamav_scan_*); solo root entra.
-chown root:wheel /var/bulwark/clamav/quarantine
-chmod 700 /var/bulwark/clamav/quarantine
+# quarantine: root escribe (post-scan/restore) pero la UI de clamav_admin lista/descarga/borra
+# directamente como usuario del panel -> grupo del panel 770. www/Apache sin acceso al malware.
+chown root:${PANEL_USER} /var/bulwark/clamav/quarantine
+chmod 770 /var/bulwark/clamav/quarantine
 
 # Ficheros dinámicos de ClamAV — los escribe clamav_admin (usuario del panel).
 touch /var/bulwark/clamav/antivirus.conf
