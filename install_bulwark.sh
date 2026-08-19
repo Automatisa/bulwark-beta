@@ -1359,12 +1359,15 @@ chmod 770 /var/bulwark/clamav/quarantine
 
 # Ficheros dinámicos de ClamAV — los escribe clamav_admin (usuario del panel).
 touch /var/bulwark/clamav/antivirus.conf
+touch /var/bulwark/clamav/force_actions.conf
 echo "4"       > /var/bulwark/clamav/freshclam_checks.conf
 echo "disable" > /var/bulwark/clamav/scan_schedule.conf
 chown ${PANEL_USER}:www /var/bulwark/clamav/antivirus.conf \
+               /var/bulwark/clamav/force_actions.conf \
                /var/bulwark/clamav/freshclam_checks.conf \
                /var/bulwark/clamav/scan_schedule.conf
 chmod 640 /var/bulwark/clamav/antivirus.conf \
+          /var/bulwark/clamav/force_actions.conf \
           /var/bulwark/clamav/freshclam_checks.conf \
           /var/bulwark/clamav/scan_schedule.conf
 # scan_results.log lo append-ean los scripts de escaneo (root); el panel lo lee.
@@ -1383,6 +1386,12 @@ RSAV
 cat > /usr/local/etc/rspamd/local.d/antivirus.conf << 'RSAV'
 .include(try=true,priority=10) "/var/bulwark/clamav/antivirus.conf"
 RSAV
+# force_actions es una seccion de PRIMER nivel de rspamd: no puede ir dentro del
+# include de antivirus.conf (local.d/antivirus.conf funde todo en la seccion
+# "antivirus"). Fichero propio con su propio include dinamico.
+cat > /usr/local/etc/rspamd/local.d/force_actions.conf << 'RSFA'
+.include(try=true,priority=10) "/var/bulwark/clamav/force_actions.conf"
+RSFA
 
 # Scripts privilegiados de ClamAV: vienen del git clone (bin/clamav_*.sh),
 # ya no se generan aquí (así están versionados y no se pisan versiones nuevas

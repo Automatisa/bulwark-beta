@@ -32,6 +32,11 @@ class module_controller extends ctrl_module
     // Fichero estático rspamd (root)
     const RSPAMD_ANTIVIRUS    = '/usr/local/etc/rspamd/local.d/antivirus.conf';
 
+    // Dinámico (panel) para la sección de primer nivel force_actions de rspamd.
+    // No puede vivir en antivirus.conf: local.d/antivirus.conf funde su include
+    // DENTRO de la sección "antivirus" y force_actions no es una regla de AV.
+    const FORCE_ACTIONS_CONF  = '/var/bulwark/clamav/force_actions.conf';
+
     static $ok_msg;
     static $err_msg;
 
@@ -133,7 +138,9 @@ class module_controller extends ctrl_module
     private static function writeAntivirusConf(bool $enabled, string $action = 'reject'): bool
     {
         if (!$enabled) {
-            return @file_put_contents(self::ANTIVIRUS_CONF, "# ClamAV email scanning desactivado\n") !== false;
+            $ok = @file_put_contents(self::ANTIVIRUS_CONF, "# ClamAV email scanning desactivado\n") !== false;
+            $ok = @file_put_contents(self::FORCE_ACTIONS_CONF, "# Generado por Bulwark clamav_admin — no editar manualmente\n") !== false && $ok;
+            return $ok;
         }
         $conf  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
         $conf .= "clamav {\n";
@@ -148,23 +155,26 @@ class module_controller extends ctrl_module
         $conf .= "    retransmits     = 2;\n";
         $conf .= "    log_clean       = false;\n";
         $conf .= "}\n";
-        if ($action !== 'reject') {
-            // La opcion "action" del modulo antivirus es un MINIMO ("least"): si el correo
-            // infectado acumula ademas puntuacion por adjuntos sospechosos (MIME_BAD_EXTENSION,
-            // EXE_IN_ARCHIVE...) el score supera el umbral de reject (15) y rspamd lo rechaza
-            // en SMTP aunque el admin eligiera entregarlo marcado. force_actions SIN "least"
-            // fija un passthrough absoluto: con virus, la accion final es siempre "add header".
-            $conf .= "force_actions {\n";
-            $conf .= "    rules {\n";
-            $conf .= "        clam_virus_deliver_marked {\n";
-            $conf .= "            expression = \"CLAM_VIRUS\";\n";
-            $conf .= "            action     = \"add header\";\n";
-            $conf .= "            message    = \"clamav: virus found - entregado marcado como spam (politica del panel)\";\n";
-            $conf .= "        }\n";
-            $conf .= "    }\n";
-            $conf .= "}\n";
+        if (!@file_put_contents(self::ANTIVIRUS_CONF, $conf)) {
+            return false;
         }
-        return @file_put_contents(self::ANTIVIRUS_CONF, $conf) !== false;
+        // La opcion "action" del modulo antivirus es un MINIMO ("least"): si el correo
+        // infectado acumula ademas puntuacion por adjuntos sospechosos (MIME_BAD_EXTENSION,
+        // EXE_IN_ARCHIVE...) el score supera el umbral de reject (15) y rspamd lo rechaza
+        // en SMTP aunque el admin eligiera entregarlo marcado. force_actions SIN "least"
+        // fija un passthrough absoluto: con virus, la accion final es siempre "add header".
+        // Va en su propio fichero dinamico: es una seccion de primer nivel de rspamd.
+        $fa  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
+        if ($action !== 'reject') {
+            $fa .= "rules {\n";
+            $fa .= "    clam_virus_deliver_marked {\n";
+            $fa .= "        expression = \"CLAM_VIRUS\";\n";
+            $fa .= "        action     = \"add header\";\n";
+            $fa .= "        message    = \"clamav: virus found - entregado marcado como spam (politica del panel)\";\n";
+            $fa .= "    }\n";
+            $fa .= "}\n";
+        }
+        return @file_put_contents(self::FORCE_ACTIONS_CONF, $fa) !== false;
     }
 
     // ----------------------------------------------------------------
