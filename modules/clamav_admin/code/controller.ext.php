@@ -97,6 +97,36 @@ class module_controller extends ctrl_module
     }
 
     // ----------------------------------------------------------------
+    // Helper API de rspamd (historial de detecciones en el flujo de correo)
+    // ----------------------------------------------------------------
+
+    private static function rspamdApi(string $path)
+    {
+        // file_get_contents no tiene timeout de conexión real; si rspamd está
+        // arrancando o caído esto colgaría la página. Comprobar puerto antes.
+        $sock = @fsockopen('127.0.0.1', 11334, $errno, $errstr, 1.0);
+        if (!$sock) return null;
+        fclose($sock);
+        $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+        $raw = @file_get_contents('http://127.0.0.1:11334' . $path, false, $ctx);
+        if ($raw === false) return null;
+        return json_decode($raw, true);
+    }
+
+    /** Entradas del historial rspamd donde clamd detectó un virus (símbolo CLAM_VIRUS). */
+    private static function getVirusDetections(): array
+    {
+        $d = self::rspamdApi('/history?rows=200');
+        if (!$d || empty($d['rows'])) return [];
+        $out = [];
+        foreach ($d['rows'] as $r) {
+            if (!is_array($r['symbols'] ?? null) || !array_key_exists('CLAM_VIRUS', $r['symbols'])) continue;
+            $out[] = $r;
+        }
+        return $out;
+    }
+
+    // ----------------------------------------------------------------
     // Escritura config rspamd antivirus
     // ----------------------------------------------------------------
 
@@ -800,12 +830,18 @@ class module_controller extends ctrl_module
         $h .= '<div class="mb-3"><label class="col-sm-3 col-form-label">Acción</label>';
         $h .= '<div class="col-sm-5"><select name="inEmailAction" class="form-control">';
         $h .= '<option value="reject"' . $selReject . '>Reject — rechazar el email (recomendado)</option>';
-        $h .= '<option value="add header"' . $selHeader . '>Add header — entregar con aviso X-Virus</option>';
+        $h .= '<option value="add header"' . $selHeader . '>Add header — entregarlo marcado como virus</option>';
         $h .= '</select></div></div>';
         $h .= '<div class="mb-3"><div class="col-sm-9 offset-sm-3">';
         $h .= '<button type="submit" class="btn btn-primary">'
             . '<span class="bi bi-floppy"></span>&nbsp; Guardar acción</button>';
         $h .= '</div></div></form>';
+        $h .= '<ul class="text-muted" style="font-size:12px;">';
+        $h .= '<li><strong>Reject</strong>: el email se rechaza durante la recepción SMTP. No llega a ningún buzón '
+            . 'y el remitente recibe un aviso <code>5.7.1</code> con el nombre del virus detectado.</li>';
+        $h .= '<li><strong>Add header</strong>: el email se entrega marcado (símbolo <code>CLAM_VIRUS</code>, peso 10 '
+            . '→ calificado como spam) y el filtro global lo deposita en la carpeta <em>Spam</em> del buzón.</li>';
+        $h .= '</ul>';
         $h .= '</div></div>';
 
         // Símbolo generado
@@ -813,9 +849,43 @@ class module_controller extends ctrl_module
         $h .= '<div class="card-header"><h4 class="card-title" style="margin:0;">Símbolo rspamd</h4></div>';
         $h .= '<div class="card-body">';
         $h .= '<table class="table table-sm" style="margin-bottom:0;">';
-        $h .= '<tr><th style="width:40%">Símbolo</th><th>Significado</th></tr>';
-        $h .= '<tr><td><code>CLAM_VIRUS</code></td><td>Virus detectado por ClamAV — acción configurada arriba</td></tr>';
+        $h .= '<tr><th style="width:30%">Símbolo</th><th style="width:20%">Peso</th><th>Significado</th></tr>';
+        $h .= '<tr><td><code>CLAM_VIRUS</code></td><td>10.0</td>'
+            . '<td>Virus detectado por ClamAV — se aplica la acción configurada arriba. '
+            . 'Las detecciones quedan registradas en el historial de la pestaña <em>Historial</em> del módulo Antispam.</td></tr>';
         $h .= '</table>';
+        $h .= '</div></div>';
+
+        // Detecciones recientes en el flujo de correo (historial rspamd)
+        $h .= '<div class="card" style="margin-top:15px;">';
+        $h .= '<div class="card-header"><h4 class="card-title" style="margin:0;">Detecciones recientes de virus (email)</h4></div>';
+        $h .= '<div class="card-body">';
+        $detections = self::getVirusDetections();
+        if (empty($detections)) {
+            $h .= '<p class="text-muted" style="margin-bottom:0;">Sin detecciones en el historial reciente de rspamd '
+                . '(últimos 200 mensajes analizados).</p>';
+        } else {
+            $actionLabel = ['reject' => ['Rechazado', 'danger'], 'add header' => ['Entregado marcado', 'warning'],
+                            'rewrite subject' => ['Entregado marcado', 'warning']];
+            $h .= '<table class="table table-sm table-striped" style="font-size:12px;margin-bottom:0;">';
+            $h .= '<tr><th>Fecha</th><th>De</th><th>Para</th><th>Asunto</th><th>Virus</th><th>Resultado</th></tr>';
+            foreach (array_slice($detections, 0, 10) as $r) {
+                $acc  = $r['action'] ?? '?';
+                $info = $actionLabel[$acc] ?? [htmlspecialchars($acc, ENT_QUOTES, 'UTF-8'), 'default'];
+                $virus = implode(', ', (array)($r['symbols']['CLAM_VIRUS']['options'] ?? [])) ?: '-';
+                $rcptArr = !empty($r['rcpt_smtp']) ? $r['rcpt_smtp'] : ($r['rcpt_mime'] ?? []);
+                $h .= '<tr>'
+                    . '<td style="white-space:nowrap;">' . date('d/m/Y H:i', (int)($r['unix_time'] ?? 0)) . '</td>'
+                    . '<td>' . htmlspecialchars($r['sender_mime'] ?? $r['sender_smtp'] ?? '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td>' . htmlspecialchars(implode(', ', (array)$rcptArr) ?: '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+                    . htmlspecialchars($r['subject'] ?? '-', ENT_QUOTES, 'UTF-8') . '</td>'
+                    . '<td><code>' . htmlspecialchars($virus, ENT_QUOTES, 'UTF-8') . '</code></td>'
+                    . '<td><span class="badge bg-' . $info[1] . '">' . $info[0] . '</span></td>'
+                    . '</tr>';
+            }
+            $h .= '</table>';
+        }
         $h .= '</div></div>';
 
         return $h;

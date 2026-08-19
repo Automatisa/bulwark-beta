@@ -1232,6 +1232,16 @@ group "phishing" {
         "REDIRECTOR_FALSE"  { weight = 0.0;  description = "Redirector legítimo conocido"; one_shot = true; }
     }
 }
+
+group "viruses" {
+    symbols {
+        # Sin peso el simbolo sale con score 0 y, en modo "add header", el correo
+        # infectado se entregaria sin marcar. Con 10.0 supera el umbral de "add header"
+        # (6) y el correo se entrega marcado como spam -> carpeta Spam via sieve global.
+        # En modo "reject" rspamd rechaza igualmente (passthrough, independiente del peso).
+        "CLAM_VIRUS"        { weight = 10.0; description = "Virus detectado por ClamAV"; one_shot = true; }
+    }
+}
 RSGROUPS
 
 cat > /usr/local/etc/rspamd/local.d/fuzzy_check.conf <<RSFUZZY
