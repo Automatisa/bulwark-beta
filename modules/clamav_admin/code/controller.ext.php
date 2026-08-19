@@ -148,6 +148,22 @@ class module_controller extends ctrl_module
         $conf .= "    retransmits     = 2;\n";
         $conf .= "    log_clean       = false;\n";
         $conf .= "}\n";
+        if ($action !== 'reject') {
+            // La opcion "action" del modulo antivirus es un MINIMO ("least"): si el correo
+            // infectado acumula ademas puntuacion por adjuntos sospechosos (MIME_BAD_EXTENSION,
+            // EXE_IN_ARCHIVE...) el score supera el umbral de reject (15) y rspamd lo rechaza
+            // en SMTP aunque el admin eligiera entregarlo marcado. force_actions SIN "least"
+            // fija un passthrough absoluto: con virus, la accion final es siempre "add header".
+            $conf .= "force_actions {\n";
+            $conf .= "    rules {\n";
+            $conf .= "        clam_virus_deliver_marked {\n";
+            $conf .= "            expression = \"CLAM_VIRUS\";\n";
+            $conf .= "            action     = \"add header\";\n";
+            $conf .= "            message    = \"clamav: virus found - entregado marcado como spam (politica del panel)\";\n";
+            $conf .= "        }\n";
+            $conf .= "    }\n";
+            $conf .= "}\n";
+        }
         return @file_put_contents(self::ANTIVIRUS_CONF, $conf) !== false;
     }
 
@@ -840,7 +856,9 @@ class module_controller extends ctrl_module
         $h .= '<li><strong>Reject</strong>: el email se rechaza durante la recepción SMTP. No llega a ningún buzón '
             . 'y el remitente recibe un aviso <code>5.7.1</code> con el nombre del virus detectado.</li>';
         $h .= '<li><strong>Add header</strong>: el email se entrega marcado (símbolo <code>CLAM_VIRUS</code>, peso 10 '
-            . '→ calificado como spam) y el filtro global lo deposita en la carpeta <em>Spam</em> del buzón.</li>';
+            . '→ calificado como spam) y el filtro global lo deposita en la carpeta <em>Spam</em> del buzón. '
+            . 'No se rechaza en SMTP aunque el mensaje acumule puntuación extra por adjuntos sospechosos '
+            . '(rspamd lo fuerza con una regla <code>force_actions</code>).</li>';
         $h .= '</ul>';
         $h .= '</div></div>';
 
