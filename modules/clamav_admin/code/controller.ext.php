@@ -162,15 +162,24 @@ class module_controller extends ctrl_module
         // infectado acumula ademas puntuacion por adjuntos sospechosos (MIME_BAD_EXTENSION,
         // EXE_IN_ARCHIVE...) el score supera el umbral de reject (15) y rspamd lo rechaza
         // en SMTP aunque el admin eligiera entregarlo marcado. force_actions SIN "least"
-        // fija un passthrough absoluto: con virus, la accion final es siempre "add header".
+        // fija un passthrough absoluto: con virus, la accion final es siempre
+        // "rewrite subject" (>= "add header"): el mensaje conserva X-Spam: Yes (el sieve
+        // global lo deposita en la carpeta Spam) y el asunto visible se reescribe a
+        // "***VIRUS*** <asunto original>" como aviso de virus para el destinatario.
         // Va en su propio fichero dinamico: es una seccion de primer nivel de rspamd.
         $fa  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
         if ($action !== 'reject') {
             $fa .= "rules {\n";
             $fa .= "    clam_virus_deliver_marked {\n";
             $fa .= "        expression = \"CLAM_VIRUS\";\n";
-            $fa .= "        action     = \"add header\";\n";
-            $fa .= "        message    = \"clamav: virus found - entregado marcado como spam (politica del panel)\";\n";
+            $fa .= "        action     = \"rewrite subject\";\n";
+            $fa .= "        message    = \"clamav: virus found - entregado marcado con aviso de virus (politica del panel)\";\n";
+            $fa .= "    }\n";
+            $fa .= "}\n";
+            // Patron de asunto de la accion forzada (seccion de primer nivel "actions").
+            $fa .= "actions {\n";
+            $fa .= "    rewrite_subject {\n";
+            $fa .= "        subject = \"***VIRUS*** %s\";\n";
             $fa .= "    }\n";
             $fa .= "}\n";
         }
@@ -856,7 +865,7 @@ class module_controller extends ctrl_module
         $h .= '<div class="mb-3"><label class="col-sm-3 col-form-label">Acción</label>';
         $h .= '<div class="col-sm-5"><select name="inEmailAction" class="form-control">';
         $h .= '<option value="reject"' . $selReject . '>Reject — rechazar el email (recomendado)</option>';
-        $h .= '<option value="add header"' . $selHeader . '>Add header — entregarlo marcado como virus</option>';
+        $h .= '<option value="add header"' . $selHeader . '>Add header — entregarlo con aviso ***VIRUS*** y marcado como spam</option>';
         $h .= '</select></div></div>';
         $h .= '<div class="mb-3"><div class="col-sm-9 offset-sm-3">';
         $h .= '<button type="submit" class="btn btn-primary">'
@@ -866,9 +875,10 @@ class module_controller extends ctrl_module
         $h .= '<li><strong>Reject</strong>: el email se rechaza durante la recepción SMTP. No llega a ningún buzón '
             . 'y el remitente recibe un aviso <code>5.7.1</code> con el nombre del virus detectado.</li>';
         $h .= '<li><strong>Add header</strong>: el email se entrega marcado (símbolo <code>CLAM_VIRUS</code>, peso 10 '
-            . '→ calificado como spam) y el filtro global lo deposita en la carpeta <em>Spam</em> del buzón. '
-            . 'No se rechaza en SMTP aunque el mensaje acumule puntuación extra por adjuntos sospechosos '
-            . '(rspamd lo fuerza con una regla <code>force_actions</code>).</li>';
+            . '→ calificado como spam) y con un aviso de virus visible: el asunto se reescribe a '
+            . '<code>***VIRUS*** &lt;asunto original&gt;</code>. El filtro global lo deposita en la carpeta '
+            . '<em>Spam</em> del buzón. No se rechaza en SMTP aunque el mensaje acumule puntuación extra por '
+            . 'adjuntos sospechosos (rspamd lo fuerza con una regla <code>force_actions</code>).</li>';
         $h .= '</ul>';
         $h .= '</div></div>';
 

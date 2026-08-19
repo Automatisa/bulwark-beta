@@ -16,8 +16,9 @@ if exists "X-Spam-Flag" {
         }
 }
 
-# Asunto reescrito por rspamd (accion "rewrite subject").
-if header :contains "subject" ["***SPAM***"] {
+# Asunto reescrito por rspamd (accion "rewrite subject"): spam o virus entregado
+# marcado (***VIRUS*** es el aviso de virus del modo "add header" de clamav_admin).
+if header :contains "subject" ["***SPAM***", "***VIRUS***"] {
   fileinto "Spam";
   stop;
 }
