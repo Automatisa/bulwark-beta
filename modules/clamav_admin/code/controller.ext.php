@@ -37,6 +37,13 @@ class module_controller extends ctrl_module
     // DENTRO de la sección "antivirus" y force_actions no es una regla de AV.
     const FORCE_ACTIONS_CONF  = '/var/bulwark/clamav/force_actions.conf';
 
+    // Dinámico (panel) con el patrón de asunto del aviso de virus (sección de
+    // primer nivel "actions" de rspamd, subsección rewrite_subject). No puede
+    // vivir en force_actions.conf: local.d/force_actions.conf funde su include
+    // DENTRO de la sección "force_actions" y el patrón no se aplicaría; por eso
+    // tiene su propio include estático local.d/actions.conf.
+    const VIRUS_SUBJECT_CONF  = '/var/bulwark/clamav/virus_subject.conf';
+
     static $ok_msg;
     static $err_msg;
 
@@ -140,6 +147,7 @@ class module_controller extends ctrl_module
         if (!$enabled) {
             $ok = @file_put_contents(self::ANTIVIRUS_CONF, "# ClamAV email scanning desactivado\n") !== false;
             $ok = @file_put_contents(self::FORCE_ACTIONS_CONF, "# Generado por Bulwark clamav_admin — no editar manualmente\n") !== false && $ok;
+            $ok = @file_put_contents(self::VIRUS_SUBJECT_CONF, "# Generado por Bulwark clamav_admin — no editar manualmente\n") !== false && $ok;
             return $ok;
         }
         $conf  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
@@ -176,14 +184,22 @@ class module_controller extends ctrl_module
             $fa .= "        message    = \"clamav: virus found - entregado marcado con aviso de virus (politica del panel)\";\n";
             $fa .= "    }\n";
             $fa .= "}\n";
-            // Patron de asunto de la accion forzada (seccion de primer nivel "actions").
-            $fa .= "actions {\n";
-            $fa .= "    rewrite_subject {\n";
-            $fa .= "        subject = \"***VIRUS*** %s\";\n";
-            $fa .= "    }\n";
-            $fa .= "}\n";
         }
-        return @file_put_contents(self::FORCE_ACTIONS_CONF, $fa) !== false;
+        if (!@file_put_contents(self::FORCE_ACTIONS_CONF, $fa)) {
+            return false;
+        }
+        // Patron de asunto del aviso de virus: va en la seccion de primer nivel
+        // "actions" (local.d/actions.conf funde su include ahi). NO puede ir en
+        // force_actions.conf: local.d/force_actions.conf lo fundiria dentro de la
+        // seccion "force_actions" y rspamd no lo aplicaria (el asunto quedaria con
+        // el patron por defecto en vez de "***VIRUS*** %s").
+        $vs  = "# Generado por Bulwark clamav_admin — no editar manualmente\n";
+        if ($action !== 'reject') {
+            $vs .= "rewrite_subject {\n";
+            $vs .= "    subject = \"***VIRUS*** %s\";\n";
+            $vs .= "}\n";
+        }
+        return @file_put_contents(self::VIRUS_SUBJECT_CONF, $vs) !== false;
     }
 
     // ----------------------------------------------------------------
