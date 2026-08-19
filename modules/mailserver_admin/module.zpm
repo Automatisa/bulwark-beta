@@ -47,7 +47,7 @@
 
     <div class="zgrid_wrapper">
         <h3><: Rejected :> (<@ StatRejected @>)</h3>
-        <p class="ms-muted"><: Recipient refusals (NOQUEUE reject) in the current mail log, newest first. :></p>
+        <p class="ms-muted"><: SMTP refusals in the current mail log: recipient refusals (NOQUEUE) and post-DATA/milter rejects (e.g. antivirus), newest first. :></p>
         <div class="table-responsive">
             <table class="table">
                 <tr><th><: When :></th><th><: Queue :></th><th><: From :></th><th><: To :></th><th><: Reason :></th></tr>

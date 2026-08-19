@@ -37,7 +37,10 @@ cat_lines() {
         if(!f)printf ","; printf "\"%s\"",$0; f=0
     }'
 }
-REJECTED_JSON=$(cat_lines "NOQUEUE: reject|[a-z]+: reject:")
+# Ojo: incluye los rechazos con ID de cola (rejects tras DATA, p. ej. filtros de contenido)
+# y los "milter-reject:" (rechazos de milter al final del mensaje — así se registra el
+# rechazo del antivirus: rspamd/clamd → "5.7.1 clamav: virus found").
+REJECTED_JSON=$(cat_lines "[0-9A-Za-z]+: reject:|milter-reject:")
 BOUNCED_JSON=$(cat_lines "status=bounced")
 DEFERRED_JSON=$(cat_lines "status=deferred")
 
