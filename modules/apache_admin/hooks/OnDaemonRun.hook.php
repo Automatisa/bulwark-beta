@@ -383,9 +383,12 @@ function WriteVhostConfigFile() {
 			# MISMAS direcciones que el vhost SSL del panel ($panelAddrs): Apache resuelve el
 			# name-matching dentro del grupo IP:puerto de la IP de llegada, y un vhost *:443
 			# nunca es candidato si hay vhosts con IP concreta (caería al fallback del panel).
-			# No puede existir un cert válido para webmail.<cualquier-dominio>, así que se sirve
-			# el cert del panel (el navegador avisará del mismatch; tras continuar llega al
-			# redirect). Un vhost EXACTO webmail.<dominio> de un cliente tiene prioridad.
+			# Este vhost COMODÍN es el FALLBACK: sirve el cert del panel, así que el navegador
+			# avisará del mismatch para dominios de cliente. Justo debajo se emite un vhost
+			# EXACTO webmail.<dominio> por cada dominio cuyo cert lo cubre (SAN webmail.<dom>
+			# —que sencrypt añade por defecto— o wildcard *.dom): en Apache la coincidencia
+			# exacta gana al comodín, así esos dominios redirigen sin aviso. Un vhost EXACTO
+			# webmail.<dominio> creado por un cliente tiene prioridad sobre ambos.
 			$wmSslPortStr = ((string)$panelSslPort !== '443') ? (':' . $panelSslPort) : '';
 			$wmSslTarget  = 'https://' . ctrl_options::GetSystemOption('bulwark_domain') . $wmSslPortStr . '/etc/apps/webmail/';
 			$line .= "# REDIRECCION webmail.<dominio> -> webmail del servidor (" . $wmSslTarget . ")" . fs_filehandler::NewLine();
@@ -400,6 +403,56 @@ function WriteVhostConfigFile() {
 			$line .= "Redirect permanent / " . $wmSslTarget . fs_filehandler::NewLine();
 			$line .= "</VirtualHost>" . fs_filehandler::NewLine();
 			$line .= fs_filehandler::NewLine();
+
+			# VHOSTS EXACTOS webmail.<dominio>:443 con el cert PROPIO de cada dominio (ver comentario
+			# del comodín de arriba). La cobertura se comprueba contra el cert REAL (sus SAN), no
+			# contra flags de la BD: así el vhost solo existe cuando https://webmail.<dominio> puede
+			# validar sin aviso, y aparece solo tras la emisión que añade el SAN/wildcard.
+			$wmCertHosted = ctrl_options::GetSystemOption('hosted_dir');
+			$wmAccCache = array();
+			$wmOwnStmt = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=:n AND vh_deleted_ts IS NULL");
+			$wmVhRows = $zdbh->query("SELECT vh_name_vc, vh_acc_fk FROM x_vhosts WHERE vh_type_in=1 AND vh_enabled_in=1 AND vh_deleted_ts IS NULL ORDER BY vh_name_vc")->fetchAll(PDO::FETCH_ASSOC);
+			foreach ($wmVhRows as $wmCertRow) {
+				$wmCertDom  = strtolower((string)$wmCertRow['vh_name_vc']);
+				$wmCertHost = 'webmail.' . $wmCertDom;
+				# Un vhost webmail.<dominio> creado por el cliente tiene prioridad: no emitir el automático.
+				$wmOwnStmt->execute(array(':n' => $wmCertHost));
+				if ((int)$wmOwnStmt->fetchColumn() > 0) { continue; }
+				$wmAcc = (int)$wmCertRow['vh_acc_fk'];
+				if (!isset($wmAccCache[$wmAcc])) {
+					$uq = $zdbh->prepare("SELECT ac_user_vc FROM x_accounts WHERE ac_id_pk=:a AND ac_deleted_ts IS NULL");
+					$uq->execute(array(':a' => $wmAcc));
+					$wmAccCache[$wmAcc] = strtolower((string)$uq->fetchColumn());
+				}
+				if ($wmAccCache[$wmAcc] === '') { continue; }
+				# Certs de producción: los vhosts siempre apuntan a la ruta 'letsencrypt' aunque el
+				# modo staging esté activo (los de staging son de una raíz no confiada).
+				$wmCertDir = $wmCertHosted . $wmAccCache[$wmAcc] . '/ssl/sencrypt/letsencrypt/' . $wmCertDom . '/';
+				if (!is_file($wmCertDir . 'cert.pem') || !is_file($wmCertDir . 'private.pem')) { continue; }
+				$wmCd = @openssl_x509_parse(@file_get_contents($wmCertDir . 'cert.pem'));
+				if (!is_array($wmCd) || empty($wmCd['extensions']['subjectAltName'])) { continue; }
+				$wmSans = array();
+				foreach (explode(',', $wmCd['extensions']['subjectAltName']) as $wmSan) {
+					$wmSan = strtolower(trim(preg_replace('/^DNS:/i', '', trim($wmSan))));
+					if ($wmSan !== '') { $wmSans[] = $wmSan; }
+				}
+				# Cubierto por SAN exacto (webmail.<dom>) o por el wildcard del dominio (*.dom).
+				if (!in_array($wmCertHost, $wmSans, true) && !in_array('*.' . $wmCertDom, $wmSans, true)) { continue; }
+				$line .= "# REDIRECCION " . $wmCertHost . " -> webmail del servidor (cert del dominio: sin aviso de navegador)" . fs_filehandler::NewLine();
+				$line .= "<VirtualHost " . $panelAddrs . ">" . fs_filehandler::NewLine();
+				$line .= "ServerName " . $wmCertHost . fs_filehandler::NewLine();
+				$line .= "SSLEngine On" . fs_filehandler::NewLine();
+				$line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
+				$line .= "SSLCertificateFile " . $wmCertDir . "cert.pem" . fs_filehandler::NewLine();
+				$line .= "SSLCertificateKeyFile " . $wmCertDir . "private.pem" . fs_filehandler::NewLine();
+				if (is_file($wmCertDir . 'chain.pem')) {
+					$line .= "SSLCACertificateFile " . $wmCertDir . "chain.pem" . fs_filehandler::NewLine();
+				}
+				$line .= 'CustomLog "' . ctrl_options::GetSystemOption('log_dir') . 'webmail-redirect-access.log" ' . ctrl_options::GetSystemOption('access_log_format') . fs_filehandler::NewLine();
+				$line .= "Redirect permanent / " . $wmSslTarget . fs_filehandler::NewLine();
+				$line .= "</VirtualHost>" . fs_filehandler::NewLine();
+				$line .= fs_filehandler::NewLine();
+			}
 		}
 
 		# Panel en :80 segun la opcion panel_force_https:

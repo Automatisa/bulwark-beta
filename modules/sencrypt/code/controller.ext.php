@@ -550,9 +550,53 @@ class module_controller extends ctrl_module {
 		return implode(',', $out);
 	}
 
+	# ¿La zona del dominio está delegada PÚBLICAMENTE en los nameservers que declara su zona en el
+	# panel? Compara los NS que responde un resolutor público (dig @8.8.8.8, fallback @1.1.1.1)
+	# contra los NS de la zona en x_dns. Es la condición para que DNS-01 valide: el TXT del reto
+	# solo vive en nuestro BIND, así que si la delegación pública apunta a otro proveedor (DNS
+	# externo) DNS-01 falla. Se usa para decidir si el SAN automático webmail.<dominio> (que exige
+	# DNS-01, pues webmail es un redirect y no sirve el reto HTTP-01) se incluye o se omite: en
+	# duda (sin respuesta de los resolutores) -> NO incluir, para no romper una emisión que hoy
+	# funciona por HTTP-01. Caché estática por-proceso (el daemon consulta varios dominios seguidos).
+	static function zoneDelegatedToPanel($domain) {
+		static $cache = array();
+		$domain = strtolower(trim((string)$domain));
+		if ($domain === '') { return false; }
+		if (isset($cache[$domain])) { return $cache[$domain]; }
+		$cache[$domain] = false;
+		global $zdbh;
+		try {
+			$zq = $zdbh->prepare("SELECT vh_id_pk FROM x_vhosts WHERE vh_name_vc=:d AND vh_type_in=1 AND vh_deleted_ts IS NULL LIMIT 1");
+			$zq->execute(array(':d' => $domain));
+			$zoneId = (int)$zq->fetchColumn();
+			if ($zoneId <= 0) { return false; }
+			$nsq = $zdbh->prepare("SELECT dn_target_vc FROM x_dns WHERE dn_vhost_fk=:v AND dn_type_vc='NS' AND dn_deleted_ts IS NULL");
+			$nsq->execute(array(':v' => $zoneId));
+			$ours = array();
+			foreach ($nsq->fetchAll(PDO::FETCH_COLUMN) as $ns) {
+				$ns = strtolower(rtrim(trim((string)$ns), '.'));
+				if ($ns !== '') { $ours[$ns] = true; }
+			}
+			if (empty($ours)) { return false; }
+			foreach (array('8.8.8.8', '1.1.1.1') as $resolver) {
+				$out = array();
+				@exec('/usr/local/bin/dig +short +time=3 +tries=1 NS ' . escapeshellarg($domain . '.') . ' @' . $resolver . ' 2>/dev/null', $out);
+				if (empty($out)) { continue; } // sin respuesta: probar el siguiente resolutor
+				foreach ($out as $l) {
+					$ns = strtolower(rtrim(trim((string)$l), '.'));
+					if ($ns !== '' && isset($ours[$ns])) { $cache[$domain] = true; return true; }
+				}
+				return false; // el resolutor respondió: la delegación pública es otra (DNS externo)
+			}
+			return false; // indeterminado (sin red/resolutores): no arriesgar la emisión
+		} catch (\Exception $e) { return false; }
+	}
+
 	# Nombres (SAN) que el daemon firmaría AHORA para un vhost (fuente única de verdad compartida con
 	# OnDaemonHour.hook.php, que firma exactamente este set): subdominio -> solo el subdominio;
-	# wildcard -> *.dom + dom + alias elegibles; raíz -> dom + www + SANs extra + alias elegibles.
+	# wildcard -> *.dom + dom + alias elegibles (el *.dom ya cubre webmail.<dom>);
+	# raíz -> dom + www + SANs extra + alias elegibles + webmail.<dom> (por defecto si la zona está
+	# delegada al panel: lo exige el redirect HTTPS webmail.<dom> sin aviso de navegador).
 	static function prospectiveLeNames(array $vh) {
 		$domain = strtolower((string)$vh['vh_name_vc']);
 		$uid    = (int)$vh['vh_acc_fk'];
@@ -569,6 +613,15 @@ class module_controller extends ctrl_module {
 			foreach ($stored as $s) { if ($s !== '' && in_array($s, $eligible, true) && !in_array($s, $names, true)) { $names[] = $s; } }
 		}
 		foreach (self::getEligibleAliases($domain, $uid) as $a) { if (!in_array($a, $names, true)) { $names[] = $a; } }
+		# webmail.<dominio> POR DEFECTO: apache_admin emite un vhost exacto webmail.<dominio>:443
+		# que sirve ESTE cert, para que https://webmail.<dominio> redirija al webmail del servidor
+		# sin aviso de navegador. Exige DNS-01 (webmail es un redirect y no sirve el reto HTTP-01),
+		# así que solo se incluye si la zona está delegada públicamente al panel; con DNS externo el
+		# cert sigue emitiéndose como hasta ahora (dom + www + extras, sin webmail). Los certs
+		# wildcard ya cubren webmail.<dom> con *.dom y no pasan por esta rama.
+		if (self::zoneDelegatedToPanel($domain) && !in_array('webmail.' . $domain, $names, true)) {
+			$names[] = 'webmail.' . $domain;
+		}
 		return $names;
 	}
 
@@ -799,6 +852,9 @@ class module_controller extends ctrl_module {
 		foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $label) {
 			$label = trim(strtolower((string)$label));
 			if ($label === '' || strpos($label, '*') !== false) { continue; }
+			# 'webmail' se incluye automáticamente en el cert (prospectiveLeNames) cuando la zona
+			# está delegada al panel: no ofrecerlo como SAN extra editable.
+			if ($label === 'webmail') { continue; }
 			$fqdn = $label . '.' . $domain;
 			if (isset($exclude[$fqdn])) { continue; }             // panel o nameserver
 			$isVhost->execute(array($fqdn));

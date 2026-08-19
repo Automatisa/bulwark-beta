@@ -307,6 +307,29 @@ function renewCertificates() {
 							$needsgen = true;
 						}
 					}
+
+					// Mejora automática webmail.<dominio>: si el cert vigente NO lo cubre (ni SAN
+					// webmail.<dom> ni wildcard *.dom) y la zona está delegada al panel (DNS-01
+					// viable), reemitir una única vez para añadirlo. apache_admin sirve ese cert en
+					// un vhost exacto webmail.<dominio>:443 -> redirect HTTPS sin aviso de navegador.
+					// Cubre el caso "dominio dado de alta antes de delegar sus NS": sin esto, el cert
+					// se quedaría sin webmail hasta la renovación de los 30 días. El set de nombres
+					// cambia -> el cooldown por historial no lo bloquea (cupo nuevo).
+					if (!$needsgen && is_file($certfile) && (int)($sslVhost['vh_type_in'] ?? 1) !== 2) {
+						$cdWm = @openssl_x509_parse(@file_get_contents($certfile));
+						$wmSans = array();
+						if (is_array($cdWm) && !empty($cdWm['extensions']['subjectAltName'])) {
+							foreach (explode(',', $cdWm['extensions']['subjectAltName']) as $sWm) {
+								$wmSans[] = strtolower(trim(preg_replace('/^DNS:/i', '', trim($sWm))));
+							}
+						}
+						if (!in_array('webmail.' . $domain, $wmSans, true) && !in_array('*.' . $domain, $wmSans, true)
+							&& module_controller::zoneDelegatedToPanel($domain)) {
+							echo "   --- Reemitiendo para añadir webmail." . $domain . " al certificado." . fs_filehandler::NewLine();
+							$needsgen = true;
+						}
+					}
+
 			}
 
 			// Do we need to generate a certificate?
@@ -351,8 +374,9 @@ function renewCertificates() {
 						$usedNames = array($domain);
 						$le->signDomains($usedNames, false, $replaces);
 					} else {
-						// Root domain: dominio + www + los SAN EXTRA que el usuario haya elegido para su
-						// cert (subdominios propios, editados en la UI de Sencrypt -> vh_le_extra_sans).
+						// Root domain: dominio + www + webmail.<dom> (por defecto si la zona está
+						// delegada al panel; prospectiveLeNames) + los SAN EXTRA que el usuario haya
+						// elegido para su cert (subdominios propios, editados en la UI de Sencrypt -> vh_le_extra_sans).
 						// Se intersectan con los subdominios ELEGIBLES ACTUALES (getEligibleSubdomains):
 						// así solo entran los que SIGUEN existiendo en el DNS y no tienen su propio cert.
 						// -> si el usuario borra el registro del DNS, el SAN se cae solo del cert en la
@@ -374,6 +398,11 @@ function renewCertificates() {
 						# Historial de emisiones para el cooldown "5 certs por set exacto/7 días".
 						module_controller::leLogIssue((int)$sslVhost['vh_id_pk'], $domain, $usedNames);
 						$issuedThisRun++;
+
+						# El cert nuevo/renovado puede estrenar cobertura de webmail.<dominio> (SAN
+						# automático o wildcard): apache_admin debe regenerar httpd-vhosts.conf para
+						# emitir el vhost exacto webmail.<dominio>:443 que lo sirve.
+						ctrl_options::SetSystemOption('apache_changed', 'true');
 
 				}
 				catch (\Exception $e) {
