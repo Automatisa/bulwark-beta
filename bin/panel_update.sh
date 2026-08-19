@@ -38,6 +38,9 @@ printf 'panel' > "$RUN"; chown root:www "$RUN" 2>/dev/null || true; chmod 644 "$
         fi
         echo "== fix permisos + reload php-fpm ==" >> "$LOG"
         [ -f "$REPO/bin/fix_permissions.php" ] && php "$REPO/bin/fix_permissions.php" >> "$LOG" 2>&1
+        # Auto-reparación: si /etc/mail/aliases es más nuevo que su .db, Postfix avisa en cada
+        # conexión ("database ... is older than source file"). Reconstruir en cada update.
+        command -v newaliases >/dev/null 2>&1 && newaliases >> "$LOG" 2>&1 || true
         service php_fpm reload >> "$LOG" 2>&1
     fi
     logger -t bulwark-updates "panel update terminado (rc=$RC)"
