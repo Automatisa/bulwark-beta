@@ -299,13 +299,13 @@ if (is_dir("$PANEL_DATA/mail_limits")) {
         check_path("$PANEL_DATA/mail_limits/redis_pass", 0640, 'root', 'maillimit');
 }
 
-// ssl/sencrypt: cuentas ACME y certificados los escribe Lescript (panel). Solo se
-// comprueban directorios; el modo de los ficheros (private.pem 600) lo gestiona Lescript.
+// ssl/sencrypt: cuentas ACME y certificados los escribe Lescript (panel, modo 700). Solo
+// se comprueban directorios; el modo de los ficheros (private.pem 600) lo gestiona Lescript.
 check_path("$PANEL_DATA/ssl", 0750, $PANEL_USER, 'www');
 if (is_dir("$PANEL_DATA/ssl/sencrypt")) {
-    check_path("$PANEL_DATA/ssl/sencrypt", 0750, $PANEL_USER, 'www');
+    check_path("$PANEL_DATA/ssl/sencrypt", 0700, $PANEL_USER, 'www');
     foreach (glob("$PANEL_DATA/ssl/sencrypt/*/", GLOB_ONLYDIR) ?: [] as $sd) {
-        check_path(rtrim($sd, '/'), 0750, $PANEL_USER, 'www');
+        check_path(rtrim($sd, '/'), 0700, $PANEL_USER, 'www');
     }
 }
 

@@ -398,7 +398,8 @@ mkdir -p "$PANEL_DATA/temp"
 # ssl/sencrypt: cuentas ACME y certificados (Lescript escribe como usuario del panel).
 mkdir -p "$PANEL_DATA/ssl/sencrypt"
 chown -R ${PANEL_USER}:www "$PANEL_DATA/ssl"
-chmod 750 "$PANEL_DATA/ssl" "$PANEL_DATA/ssl/sencrypt"
+chmod 750 "$PANEL_DATA/ssl"
+chmod 700 "$PANEL_DATA/ssl/sencrypt"
 # updates/: lo escriben scripts root (panel_update, sys_update_check); el panel solo lee.
 mkdir -p "$PANEL_DATA/updates"
 chown root:www "$PANEL_DATA/updates"
