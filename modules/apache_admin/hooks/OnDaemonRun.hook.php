@@ -383,31 +383,22 @@ function WriteVhostConfigFile() {
 			# MISMAS direcciones que el vhost SSL del panel ($panelAddrs): Apache resuelve el
 			# name-matching dentro del grupo IP:puerto de la IP de llegada, y un vhost *:443
 			# nunca es candidato si hay vhosts con IP concreta (caería al fallback del panel).
-			# Este vhost COMODÍN es el FALLBACK: sirve el cert del panel, así que el navegador
-			# avisará del mismatch para dominios de cliente. Justo debajo se emite un vhost
-			# EXACTO webmail.<dominio> por cada dominio cuyo cert lo cubre (SAN webmail.<dom>
-			# —que sencrypt añade por defecto— o wildcard *.dom): en Apache la coincidencia
-			# exacta gana al comodín, así esos dominios redirigen sin aviso. Un vhost EXACTO
-			# webmail.<dominio> creado por un cliente tiene prioridad sobre ambos.
+			# Estructura (el ORDEN importa): primero los vhosts EXACTOS webmail.<dominio> con el
+			# cert del propio dominio, y DESPUÉS el vhost COMODÍN de fallback con el cert del
+			# panel. Apache recorre los vhosts EN ORDEN y el primero cuyo ServerName/ServerAlias
+			# coincide gana TAMBIÉN la selección de cert por SNI (comprobado en Apache 2.4.68: un
+			# ServerAlias webmail.* definido antes gana a un ServerName exacto definido después).
+			# El comodín sirve el cert del panel: para dominios sin cert propio el navegador
+			# avisará del mismatch (no se puede hacer mejor). Un vhost webmail.<dominio> creado
+			# por un cliente anula el automático correspondiente (se comprueba al emitirlos).
 			$wmSslPortStr = ((string)$panelSslPort !== '443') ? (':' . $panelSslPort) : '';
 			$wmSslTarget  = 'https://' . ctrl_options::GetSystemOption('bulwark_domain') . $wmSslPortStr . '/etc/apps/webmail/';
-			$line .= "# REDIRECCION webmail.<dominio> -> webmail del servidor (" . $wmSslTarget . ")" . fs_filehandler::NewLine();
-			$line .= "<VirtualHost " . $panelAddrs . ">" . fs_filehandler::NewLine();
-			$line .= "ServerName webmail-redirect.invalid" . fs_filehandler::NewLine();
-			$line .= "ServerAlias webmail.*" . fs_filehandler::NewLine();
-			$line .= "SSLEngine On" . fs_filehandler::NewLine();
-			$line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
-			$line .= "SSLCertificateFile " . $panelCert . fs_filehandler::NewLine();
-			$line .= "SSLCertificateKeyFile " . $panelKey . fs_filehandler::NewLine();
-			$line .= 'CustomLog "' . ctrl_options::GetSystemOption('log_dir') . 'webmail-redirect-access.log" ' . ctrl_options::GetSystemOption('access_log_format') . fs_filehandler::NewLine();
-			$line .= "Redirect permanent / " . $wmSslTarget . fs_filehandler::NewLine();
-			$line .= "</VirtualHost>" . fs_filehandler::NewLine();
-			$line .= fs_filehandler::NewLine();
 
-			# VHOSTS EXACTOS webmail.<dominio>:443 con el cert PROPIO de cada dominio (ver comentario
-			# del comodín de arriba). La cobertura se comprueba contra el cert REAL (sus SAN), no
-			# contra flags de la BD: así el vhost solo existe cuando https://webmail.<dominio> puede
-			# validar sin aviso, y aparece solo tras la emisión que añade el SAN/wildcard.
+			# VHOSTS EXACTOS webmail.<dominio>:443 con el cert PROPIO de cada dominio, ANTES del
+			# comodín de fallback (el orden importa; ver comentario de la sección). La cobertura se
+			# comprueba contra el cert REAL (sus SAN), no contra flags de la BD: así el vhost solo
+			# existe cuando https://webmail.<dominio> puede validar sin aviso, y aparece solo tras
+			# la emisión que añade el SAN/wildcard.
 			$wmCertHosted = ctrl_options::GetSystemOption('hosted_dir');
 			$wmAccCache = array();
 			$wmOwnStmt = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE vh_name_vc=:n AND vh_deleted_ts IS NULL");
@@ -453,6 +444,22 @@ function WriteVhostConfigFile() {
 				$line .= "</VirtualHost>" . fs_filehandler::NewLine();
 				$line .= fs_filehandler::NewLine();
 			}
+
+			# FALLBACK COMODÍN (tras los exactos): cualquier webmail.<dominio> sin vhost exacto
+			# anterior cae aquí y sirve el cert del panel (aviso de navegador inevitable: sin cert
+			# del dominio no se puede hacer mejor).
+			$line .= "# REDIRECCION webmail.<dominio> -> webmail del servidor (" . $wmSslTarget . ")" . fs_filehandler::NewLine();
+			$line .= "<VirtualHost " . $panelAddrs . ">" . fs_filehandler::NewLine();
+			$line .= "ServerName webmail-redirect.invalid" . fs_filehandler::NewLine();
+			$line .= "ServerAlias webmail.*" . fs_filehandler::NewLine();
+			$line .= "SSLEngine On" . fs_filehandler::NewLine();
+			$line .= "SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1" . fs_filehandler::NewLine();
+			$line .= "SSLCertificateFile " . $panelCert . fs_filehandler::NewLine();
+			$line .= "SSLCertificateKeyFile " . $panelKey . fs_filehandler::NewLine();
+			$line .= 'CustomLog "' . ctrl_options::GetSystemOption('log_dir') . 'webmail-redirect-access.log" ' . ctrl_options::GetSystemOption('access_log_format') . fs_filehandler::NewLine();
+			$line .= "Redirect permanent / " . $wmSslTarget . fs_filehandler::NewLine();
+			$line .= "</VirtualHost>" . fs_filehandler::NewLine();
+			$line .= fs_filehandler::NewLine();
 		}
 
 		# Panel en :80 segun la opcion panel_force_https:
