@@ -28,8 +28,10 @@ EOF
     echo "añadido grupo viruses (CLAM_VIRUS weight=10.0) a groups.conf"
 fi
 
-# Recargar rspamd si está en ejecución para aplicar el cambio ya
-if pgrep -x rspamd > /dev/null 2>&1; then
+# Recargar rspamd si está en ejecución para aplicar el cambio ya.
+# Ojo: no usar "pgrep -x rspamd" — en FreeBSD rspamd renombra el proceso a
+# "rspamd: main process ..." y el match exacto falla. Usar el pidfile.
+if [ -s /var/run/rspamd/rspamd.pid ] && kill -0 "$(cat /var/run/rspamd/rspamd.pid)" 2>/dev/null; then
     if /usr/sbin/service rspamd reload > /dev/null 2>&1; then
         echo "rspamd recargado"
     else
