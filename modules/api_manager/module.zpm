@@ -392,13 +392,18 @@
                     <th>Vincular a usuario <small>(opcional)</small>:</th>
                     <td>
                         <input type="text" id="inTokenUser" name="inTokenUser" class="form-control" style="max-width:260px"
-                               placeholder="username (vacío = sin vincular)">
+                               placeholder="username">
                         <p class="help-block">
                             Si se especifica, el token opera solo sobre los recursos de ese usuario.<br>
+                            <% if IsAdmin %>
                             <span id="unbound-warning" style="display:none;color:#c0392b;font-weight:bold">
                                 &#9888; Sin usuario vinculado, un token <em>write</em> o <em>reseller</em>
-                                tiene acceso de escritura sobre <strong>todas</strong> las cuentas.
+                                tiene acceso de escritura sobre <strong>todas</strong> las cuentas
+                                (reservado a automatización del administrador).
                             </span>
+                            <% else %>
+                            Si lo dejas vacío, el token quedará vinculado a tu propia cuenta.
+                            <% endif %>
                         </p>
                     </td>
                 </tr>
@@ -483,9 +488,10 @@
             <form action="./?module=api_manager&action=CleanAuditLog" method="post" style="margin:0"
                   data-confirm="¿Limpiar tus entradas del registro de auditoría? Esta acción no se puede deshacer.">
                 <@ CSFR_Tag @>
-                <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-trash me-1"></i>&#128465;&nbsp; Limpiar mis registros</button>
+                <button class="btn btn-sm btn-danger" type="submit"><i class="bi bi-trash me-1"></i>Limpiar mis registros</button>
             </form>
         </div>
+        <p class="help-block" style="margin:0 0 10px">Se muestran tus últimas 100 acciones. Al limpiar, la anotación de la propia limpieza permanece visible por seguridad.</p>
         <div style="overflow-x:auto">
         <div class="table-responsive"><table class="table table-sm table-striped" style="font-size:12px">
             <thead>

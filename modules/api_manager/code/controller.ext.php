@@ -261,7 +261,8 @@ class module_controller extends ctrl_module
                 'btn_unrevoke' => '<button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-arrow-counterclockwise me-1"></i>Levantar revocaci&#243;n</button>',
             ];
         }
-        $confirm = "return confirm('\\u00bfRevocar la API a esta cuenta y toda su jerarqu\\u00eda?\\nEsta acci\\u00f3n desactiva todos sus tokens activos.')";
+        // data-confirm lo consume csp-shim como MENSAJE de window.confirm(): sin "return confirm(...)".
+        $confirm = "¿Revocar la API a esta cuenta y toda su jerarquía?\nEsta acción desactiva todos sus tokens activos.";
         return [
             'btn_toggle'   => $allowed
                 ? '<button class="btn btn-sm btn-secondary" type="submit"><i class="bi bi-dash-circle me-1"></i>Quitar acceso</button>'
@@ -536,7 +537,7 @@ class module_controller extends ctrl_module
         )->execute([':uname' => $r['username']]);
 
         self::audit('Registro de auditoría propio limpiado');
-        self::flashOk('Tu registro de auditoría ha sido limpiado.');
+        self::flashOk('Tu registro de auditoría ha sido limpiado. La anotación de la propia limpieza permanece por seguridad.');
         self::redirectBack();
     }
 
@@ -830,7 +831,10 @@ class module_controller extends ctrl_module
 
         $row = $zdbh->prepare("SELECT ac_api_self_in FROM x_accounts WHERE ac_id_pk = :uid LIMIT 1");
         $row->execute([':uid' => $r['uid']]);
-        $current = (int)($row->fetchColumn() ?: 1);
+        $cur     = $row->fetchColumn();
+        // Fix: "?: 1" convertía un 0 almacenado en 1 y el toggle quedaba bloqueado
+        // en "desactivado" (el usuario no podía reactivar su propio acceso).
+        $current = ($cur === false || $cur === null) ? 1 : (int)$cur;
         $new_val = 1 - $current;
 
         $zdbh->prepare(
@@ -954,6 +958,10 @@ class module_controller extends ctrl_module
         $user_fk_raw = trim((string)$controller->GetControllerRequest('FORM', 'inTokenUser'));
 
         if ($r['is_user']) {
+            $user_fk = $r['uid'];
+        } elseif ($r['is_reseller'] && ($user_fk_raw === '' || $user_fk_raw === '0')) {
+            // Seguridad: un reseller NUNCA crea tokens sin vincular — quedarían sin
+            // filtro de cuenta en la API. Vacío = vinculado a su propia cuenta.
             $user_fk = $r['uid'];
         } elseif ($user_fk_raw !== '' && $user_fk_raw !== '0') {
             $uq = $zdbh->prepare(

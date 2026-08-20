@@ -546,11 +546,14 @@ if ((int)$bf->fetchColumn() >= 20) {
 // También recuperamos at_allowed_ip_vc y at_expires_ts para validarlos a continuación.
 $token_hash = hash('sha256', $raw_token);
 $stmt = $zdbh->prepare(
-    "SELECT t.at_id_pk, t.at_name_vc, t.at_scope_vc, t.at_user_fk,
+    "SELECT t.at_id_pk, t.at_name_vc, t.at_scope_vc, t.at_user_fk, t.at_creator_vc,
             t.at_allowed_ip_vc, t.at_expires_ts,
-            a.ac_group_fk, a.ac_api_allowed_in, a.ac_api_self_in, a.ac_api_revoked_in
+            a.ac_group_fk, a.ac_api_allowed_in, a.ac_api_self_in, a.ac_api_revoked_in,
+            c.ac_id_pk AS creator_id, c.ac_group_fk AS creator_group, c.ac_enabled_in AS creator_enabled,
+            c.ac_api_allowed_in AS creator_allowed, c.ac_api_self_in AS creator_self, c.ac_api_revoked_in AS creator_revoked
        FROM x_api_tokens t
        LEFT JOIN x_accounts a ON a.ac_id_pk = t.at_user_fk
+       LEFT JOIN x_accounts c ON c.ac_user_vc = t.at_creator_vc AND c.ac_deleted_ts IS NULL
       WHERE t.at_token_hash_vc = :hash AND t.at_enabled_in = 1 AND t.at_deleted_ts IS NULL
         AND (t.at_user_fk IS NULL OR (a.ac_enabled_in = 1 AND a.ac_deleted_ts IS NULL))
       LIMIT 1"
@@ -574,6 +577,28 @@ $al_token_id       = (int)$token_row['at_id_pk'];
 $token_scope       = $token_row['at_scope_vc'] ?? 'read';
 $token_user_fk     = $token_row['at_user_fk'] !== null ? (int)$token_row['at_user_fk'] : null;
 $token_is_reseller = ($token_scope === 'reseller');
+
+// Red de seguridad (escalada de privilegios): un token SIN vincular (at_user_fk NULL)
+// solo opera sin filtro de cuenta si lo creó un admin (automatización global). Si lo
+// creó un reseller/usuario (posible en versiones anteriores del módulo), se vincula al
+// creador y hereda sus filtros y delegación: sin esto, un token write sin vincular de
+// un reseller tendría acceso de lectura/escritura a TODAS las cuentas y dominios.
+if ($token_user_fk === null && $token_scope !== 'admin') {
+    $creator_id = $token_row['creator_id'] !== null ? (int)$token_row['creator_id'] : null;
+    if ($creator_id === null) {
+        api_respond(401, ['error' => 'Unauthorized', 'message' => 'Token inválido o revocado.', 'code' => 401]);
+    }
+    if ((int)$token_row['creator_group'] !== 1) {
+        if ((int)$token_row['creator_enabled'] !== 1) {
+            api_respond(401, ['error' => 'Unauthorized', 'message' => 'Token inválido o revocado.', 'code' => 401]);
+        }
+        $token_user_fk                = $creator_id;
+        $token_row['ac_group_fk']       = $token_row['creator_group'];
+        $token_row['ac_api_allowed_in'] = $token_row['creator_allowed'];
+        $token_row['ac_api_self_in']    = $token_row['creator_self'];
+        $token_row['ac_api_revoked_in'] = $token_row['creator_revoked'];
+    }
+}
 
 // Validar expiración del token
 if ($token_row['at_expires_ts'] !== null && strtotime($token_row['at_expires_ts']) <= time()) {
