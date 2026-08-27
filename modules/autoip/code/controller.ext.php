@@ -285,10 +285,32 @@ class module_controller extends ctrl_module {
         return $rows;
     }
 
-    /** Expande una entrada de alta: IP suelta o CIDR IPv4 a.b.c.d/nn (prefijo /24..32; máx 256). */
+    /** Expande una entrada de alta: IP suelta, CIDR IPv4 a.b.c.d/nn (prefijo /24..32) o
+     *  rango IPv4 con guion (a.b.c.d-e.f.g.h ó a.b.c.d-N, último octeto). Máx. 256
+     *  direcciones; devuelve null si la entrada no es válida. */
     private static function expandIPInput($in) {
         $in = trim($in);
         if (filter_var($in, FILTER_VALIDATE_IP)) return array($in);
+
+        // rango con guion: «a.b.c.d-e.f.g.h» o forma corta «a.b.c.d-N»
+        if (strpos($in, '-') !== false) {
+            $parts = array_map('trim', explode('-', $in));
+            if (count($parts) !== 2) return null;
+            list($a, $b) = $parts;
+            if (!filter_var($a, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) return null;
+            if (!filter_var($b, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                if (!preg_match('/^\d{1,3}$/', $b)) return null;
+                $b = preg_replace('/\d+$/', $b, $a); // forma corta: mismo /24, cambia el último octeto
+            }
+            $s = ip2long($a); $e = ip2long($b);
+            if ($s === false || $e === false) return null;
+            if ($s > $e) { $t = $s; $s = $e; $e = $t; }
+            if (($e - $s + 1) > 256) return null;
+            $ips = array();
+            for ($i = $s; $i <= $e; $i++) $ips[] = long2ip($i);
+            return $ips;
+        }
+
         if (preg_match('#^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/(\d{1,2})$#', $in, $m)) {
             $base = $m[1]; $prefix = (int)$m[2];
             if (!filter_var($base, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) || $prefix < 24 || $prefix > 32) return null;
@@ -411,12 +433,12 @@ class module_controller extends ctrl_module {
         }
         $h .= '</tbody></table>';
 
-        // formulario de alta (IP suelta o rango CIDR)
+        // formulario de alta (IP suelta, rango CIDR o rango con guion)
         $h .= '<form method="post" action="./?module=autoip&action=AddIP" style="margin-top:10px;">' . $csrf
             . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            . '<input type="text" name="inNewIP" placeholder="IPv4/IPv6 (192.168.1.50 · fd00::10) o rango IPv4 (192.168.1.48/29)" maxlength="45" style="width:380px;" class="form-control form-control-sm" required>'
+            . '<input type="text" name="inNewIP" placeholder="192.168.1.50 · fd00::10 · 192.168.1.48/29 · 192.168.1.50-192.168.1.60" maxlength="45" style="width:420px;" class="form-control form-control-sm" required>'
             . '<button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Añadir al pool</button>'
-            . '</div><small class="text-muted">Acepta una IP suelta (IPv4 o IPv6) o un rango CIDR IPv4 (/24 a /32; en bloques se excluyen red y broadcast). Solo inventario — sin tocar la red aún.</small></form>';
+            . '</div><small class="text-muted">Acepta una IP suelta (IPv4 o IPv6), un CIDR IPv4 (/24 a /32) o un rango con guion (máx. 256 IPs; en bloques se excluyen red y broadcast). Solo inventario — sin tocar la red aún.</small></form>';
 
         return $h;
     }
@@ -429,7 +451,7 @@ class module_controller extends ctrl_module {
         $input = trim((string)($f['inNewIP'] ?? ''));
 
         $ips = self::expandIPInput($input);
-        if ($ips === null || empty($ips)) { self::$err_msg = 'IP o rango CIDR inválido (rango /24 a /32).'; return; }
+        if ($ips === null || empty($ips)) { self::$err_msg = 'IP o rango inválido (CIDR /24 a /32, o guion con máx. 256 IPs).'; return; }
 
         $server_ip = (string)ctrl_options::GetOption('server_ip');
         $added = 0; $skipped = 0;
@@ -723,7 +745,7 @@ class module_controller extends ctrl_module {
         if ($ips && $users) {
             $h .= '<form method="post" action="./?module=autoip&action=AssignUserIp" style="margin-top:10px;">' . $csrf
                 . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-                . '<select name="inIpId" class="form-select form-select-sm" style="width:auto;" required><option value="">IP…</option>';
+                . '<select name="inIpId" class="form-select form-select-sm" style="width:auto;"><option value="">IP…</option>';
             foreach ($ips as $ip) {
                 $lbl = $ip['ip_address_vc'] . ($admin
                     ? (empty($ip['ip_reseller_fk']) ? ' (pool admin)' : ' (pool reseller)')
@@ -740,8 +762,13 @@ class module_controller extends ctrl_module {
                     . ' (' . $qtxt . ')</option>';
             }
             $h .= '</select> <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-person-plus me-1"></i>Asignar IP</button>'
-                . '</div><small class="text-muted">Entre paréntesis: IPv4 asignadas/cuota del paquete. '
-                . 'La IP debe pertenecer al pool que gobierna al usuario (el admin puede asignar de cualquier pool).</small></form>';
+                . '</div>'
+                . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">'
+                . '<label class="text-muted" style="font-size:12px;">o rango:</label>'
+                . '<input type="text" name="inIpRange" placeholder="203.0.113.0/28 · 203.0.113.1-203.0.113.16" maxlength="45" style="width:340px;" class="form-control form-control-sm">'
+                . '</div><small class="text-muted">Elige una IP de la lista o escribe un rango (CIDR /24 a /32 o con guion); no ambos. '
+                . 'Entre paréntesis: IPv4 asignadas/cuota del paquete. '
+                . 'Las IPs deben pertenecer al pool que gobierna al usuario (el admin puede asignar de cualquier pool).</small></form>';
         } else {
             $h .= '<p class="text-muted" style="font-size:12px;"><em>No hay IPs libres o usuarios a los que asignar.</em></p>';
         }
@@ -757,10 +784,79 @@ class module_controller extends ctrl_module {
         $viewer = ctrl_users::GetUserDetail();
         $vid    = (int)$viewer['userid'];
 
-        $f    = $controller->GetAllControllerRequests('FORM');
-        $id   = (int)($f['inIpId'] ?? 0);
-        $tuid = (int)($f['inUser'] ?? 0);
-        if ($id <= 0 || $tuid <= 0) { self::$err_msg = 'Datos inválidos.'; return; }
+        $f     = $controller->GetAllControllerRequests('FORM');
+        $id    = (int)($f['inIpId'] ?? 0);
+        $tuid  = (int)($f['inUser'] ?? 0);
+        $range = trim((string)($f['inIpRange'] ?? ''));
+        if ($tuid <= 0 || ($range === '' && $id <= 0) || ($range !== '' && $id > 0)) {
+            self::$err_msg = 'Datos inválidos: elige usuario y una IP o un rango (no ambos).'; return;
+        }
+
+        // ------------------------------------------------------------------
+        // Modo RANGO: asignar un bloque entero de una vez
+        // ------------------------------------------------------------------
+        if ($range !== '') {
+            $ips = self::expandIPInput($range);
+            if ($ips === null || empty($ips)) {
+                self::$err_msg = 'Rango inválido (CIDR /24 a /32, o guion con máx. 256 IPs).'; return;
+            }
+
+            $uq = $zdbh->prepare("SELECT ac_user_vc, ac_reseller_fk FROM x_accounts
+                WHERE ac_id_pk=:u AND ac_enabled_in=1 AND ac_deleted_ts IS NULL");
+            $uq->execute([':u' => $tuid]);
+            $acc = $uq->fetch(PDO::FETCH_ASSOC);
+            if (!$acc) { self::$err_msg = 'Usuario no válido.'; return; }
+
+            // ámbito del espectador: pool gobernante del usuario destino
+            if ($vg === 2) {
+                $wantPool = $vid;
+                if ((int)($acc['ac_reseller_fk'] ?? 0) !== $vid) { self::$err_msg = 'Solo puedes asignar IPs a tus clientes.'; return; }
+            } else {
+                $wantPool = (int)(self::ipOwnerForUser($tuid) ?? 0);
+            }
+
+            $list = implode(',', array_map([$zdbh, 'quote'], $ips));
+            $rows = $zdbh->query("SELECT * FROM x_ips WHERE ip_address_vc IN ($list)")->fetchAll(PDO::FETCH_ASSOC);
+            $byAddr = [];
+            foreach ($rows as $r) { $byAddr[$r['ip_address_vc']] = $r; }
+
+            $cand = [];
+            $skipFaltan = 0; $skipNoAsig = 0; $skipPool = 0;
+            foreach ($ips as $ip) {
+                if (!isset($byAddr[$ip])) { $skipFaltan++; continue; }
+                $r = $byAddr[$ip];
+                if (!empty($r['ip_is_primary_in']) || empty($r['ip_enabled_in']) || !empty($r['ip_user_fk'])) { $skipNoAsig++; continue; }
+                if ((int)($r['ip_reseller_fk'] ?? 0) !== $wantPool) { $skipPool++; continue; }
+                $cand[] = $r;
+            }
+            if (empty($cand)) {
+                self::$err_msg = 'Ninguna IP del rango es asignable (fuera del inventario, no asignables o de otro pool).'; return;
+            }
+
+            // la cuota se comprueba contra el bloque completo (solo cuenta IPv4)
+            $v4 = 0;
+            foreach ($cand as $r) {
+                if (filter_var($r['ip_address_vc'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) $v4++;
+            }
+            if ($v4 > 0) {
+                $quota = self::userIpQuota($tuid);
+                if ($quota === 0) { self::$err_msg = 'El paquete del usuario no permite IPs dedicadas.'; return; }
+                if ($quota !== -1) {
+                    $used = self::userAssignedIpCount($tuid);
+                    if (($used + $v4) > $quota) {
+                        self::$err_msg = 'No caben: el rango pide ' . $v4 . ' IPv4 y el usuario tiene ' . $used . '/' . $quota . '.'; return;
+                    }
+                }
+            }
+
+            $ids = implode(',', array_map('intval', array_column($cand, 'ip_id_pk')));
+            $zdbh->exec("UPDATE x_ips SET ip_user_fk=" . (int)$tuid . " WHERE ip_id_pk IN ($ids) AND ip_user_fk IS NULL");
+            $omit = $skipFaltan + $skipNoAsig + $skipPool;
+            self::$ok_msg = count($cand) . ' IP(s) del rango asignadas a ' . htmlspecialchars((string)$acc['ac_user_vc'], ENT_QUOTES)
+                . ($omit ? ' (' . $omit . ' omitidas: ' . $skipFaltan . ' fuera del inventario, '
+                    . $skipNoAsig . ' no asignables, ' . $skipPool . ' de otro pool)' : '') . '.';
+            return;
+        }
 
         $iq = $zdbh->prepare("SELECT * FROM x_ips WHERE ip_id_pk=:id");
         $iq->execute([':id' => $id]);
