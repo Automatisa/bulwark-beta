@@ -97,7 +97,7 @@
                 </tr>
                 <tr>
                     <th>Máx. IPs dedicadas:</th>
-                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" size="5" maxlength="4" value="<@ EditCurrentDedicatedIps @>" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Las IPs concretas se ceden en el módulo IP.</td>
+                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" size="5" maxlength="4" value="<@ EditCurrentDedicatedIps @>" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 distintas que cada usuario del paquete puede tener en uso entre sus dominios (los subdominios heredan la IP del padre y no cuentan); en cuentas reseller también limita cuántas IPs puede recibir su pool. El usuario elige la IP por dominio desde Domains (botón &laquo;IP&raquo; de cada dominio); el pool de IPs y su cesión a resellers se gestiona en AutoIP Updater.</td>
                 </tr>
                 <tr>
                     <th><: Disk space quota :>:</th>
@@ -255,7 +255,7 @@
                 </tr>
                 <tr>
                     <th>Máx. IPs dedicadas:</th>
-                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" value="0" size="5" maxlength="4" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Las IPs concretas se ceden en el módulo IP.</td>
+                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" value="0" size="5" maxlength="4" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 distintas que cada usuario del paquete puede tener en uso entre sus dominios (los subdominios heredan la IP del padre y no cuentan); en cuentas reseller también limita cuántas IPs puede recibir su pool. El usuario elige la IP por dominio desde Domains (botón &laquo;IP&raquo; de cada dominio); el pool de IPs y su cesión a resellers se gestiona en AutoIP Updater.</td>
                 </tr>
                 <tr>
                     <th><: Disk space quota :>:</th>
