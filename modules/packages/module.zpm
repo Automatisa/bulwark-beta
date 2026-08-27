@@ -131,6 +131,9 @@
                     <td><input name="inPhpMaxInput" type="text" id="inPhpMaxInput" size="5" maxlength="5" value="<@ EditCurrentPhpMaxInput @>" data-numeric="int"/> segundos</td>
                 </tr>
                 <tr>
+                    <th colspan="2"><strong>Límites de sistema (rctl):</strong></th>
+                </tr>
+                <tr>
                     <th>Máx. procesos (rctl):</th>
                     <td><input name="inMaxProc" type="text" id="inMaxProc" size="6" maxlength="6" value="<@ EditCurrentMaxProc @>" data-numeric="int"/> (0 = ilimitado)</td>
                 </tr>
@@ -284,6 +287,9 @@
                 <tr>
                     <th><: Max input time :>:</th>
                     <td><input name="inPhpMaxInput" type="text" id="inPhpMaxInput" value="60" size="5" maxlength="5" data-numeric="int"/> segundos</td>
+                </tr>
+                <tr>
+                    <th colspan="2"><strong>Límites de sistema (rctl):</strong></th>
                 </tr>
                 <tr>
                     <th>Máx. procesos (rctl):</th>
