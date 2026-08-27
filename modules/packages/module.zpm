@@ -97,7 +97,7 @@
                 </tr>
                 <tr>
                     <th>Máx. IPs dedicadas:</th>
-                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" size="5" maxlength="4" value="<@ EditCurrentDedicatedIps @>" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 distintas que cada usuario del paquete puede tener en uso entre sus dominios (los subdominios heredan la IP del padre y no cuentan); en cuentas reseller también limita cuántas IPs puede recibir su pool. El usuario elige la IP por dominio desde Domains (botón &laquo;IP&raquo; de cada dominio); el pool de IPs y su cesión a resellers se gestiona en AutoIP Updater.</td>
+                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" size="5" maxlength="4" value="<@ EditCurrentDedicatedIps @>" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 que se pueden asignar a cada usuario del paquete: las asigna el admin (o el reseller desde su pool) en AutoIP Updater, sección «IPs asignadas a clientes», y el usuario las usa a su discreción entre sus dominios desde Domains (botón &laquo;IP&raquo;), solo entre las suyas. En cuentas reseller también limita cuántas IPs puede recibir su pool. Solo IPv4; la IPv6 no consume cuota.</td>
                 </tr>
                 <tr>
                     <th><: Disk space quota :>:</th>
@@ -255,7 +255,7 @@
                 </tr>
                 <tr>
                     <th>Máx. IPs dedicadas:</th>
-                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" value="0" size="5" maxlength="4" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 distintas que cada usuario del paquete puede tener en uso entre sus dominios (los subdominios heredan la IP del padre y no cuentan); en cuentas reseller también limita cuántas IPs puede recibir su pool. El usuario elige la IP por dominio desde Domains (botón &laquo;IP&raquo; de cada dominio); el pool de IPs y su cesión a resellers se gestiona en AutoIP Updater.</td>
+                    <td><input name="inNoDedicatedIps" type="text" id="inNoDedicatedIps" value="0" size="5" maxlength="4" data-numeric="neg"/> (-1 = ilimitadas ; 0 = ninguna). Máximo de IPs dedicadas IPv4 que se pueden asignar a cada usuario del paquete: las asigna el admin (o el reseller desde su pool) en AutoIP Updater, sección «IPs asignadas a clientes», y el usuario las usa a su discreción entre sus dominios desde Domains (botón &laquo;IP&raquo;), solo entre las suyas. En cuentas reseller también limita cuántas IPs puede recibir su pool. Solo IPv4; la IPv6 no consume cuota.</td>
                 </tr>
                 <tr>
                     <th><: Disk space quota :>:</th>

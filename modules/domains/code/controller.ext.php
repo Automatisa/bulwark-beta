@@ -902,52 +902,17 @@ class module_controller extends ctrl_module
         return $q->fetchAll(PDO::FETCH_COLUMN);
     }
 
-    /** Quién POSEE las IPs que puede usar un usuario (Fase 2):
-     *   - un reseller (grupo 2) usa su propio pool  -> devuelve su propio id;
-     *   - un usuario normal usa el pool de su reseller (si su reseller es grupo 2) -> id del reseller;
-     *   - admin o usuario directo del admin -> null (pool del admin, ip_reseller_fk IS NULL). */
-    private static function ipOwnerForUser($uid) {
-        global $zdbh;
-        $q = $zdbh->prepare("SELECT ac_group_fk, ac_reseller_fk FROM x_accounts WHERE ac_id_pk=:id AND ac_deleted_ts IS NULL");
-        $q->execute([':id' => $uid]);
-        $a = $q->fetch(PDO::FETCH_ASSOC);
-        if (!$a) return null;
-        if ((int)$a['ac_group_fk'] === 2) return (int)$uid;          // reseller: su propio pool
-        $rid = (int)($a['ac_reseller_fk'] ?? 0);
-        if ($rid > 0) {
-            $r = $zdbh->prepare("SELECT ac_group_fk FROM x_accounts WHERE ac_id_pk=:id AND ac_deleted_ts IS NULL");
-            $r->execute([':id' => $rid]);
-            if ((int)$r->fetchColumn() === 2) return $rid;           // su reseller (grupo 2)
-        }
-        return null;                                                  // pool del admin
-    }
-
-    /** IPs que el usuario puede elegir como dedicada: activas, no primarias, del pool que le
-     *  corresponde (el del admin si no cuelga de un reseller, o el de SU reseller), y no usadas
-     *  por dominios de OTRO usuario. */
+    /** IPs que el usuario puede elegir como dedicada (Fase 2b): solo las ASIGNADAS a su
+     *  cuenta (x_ips.ip_user_fk) por el admin o su reseller, que estén activas. La cuota
+     *  del paquete se aplica en el momento de la asignación (módulo autoip), no aquí. */
     private static function assignableIPsForUser($uid, $family = '4') {
         global $zdbh;
-        $owner   = self::ipOwnerForUser($uid);
         $famcond = ($family === '6') ? "ip_address_vc LIKE '%:%'" : "ip_address_vc NOT LIKE '%:%'";
-        $col     = ($family === '6') ? 'vh_custom_ip6_vc' : 'vh_custom_ip_vc';
-        if ($owner === null) {
-            $rows = $zdbh->query("SELECT ip_address_vc FROM x_ips
-                WHERE ip_enabled_in=1 AND ip_is_primary_in=0 AND ip_reseller_fk IS NULL AND $famcond
-                ORDER BY INET6_ATON(ip_address_vc)")->fetchAll(PDO::FETCH_COLUMN);
-        } else {
-            $st = $zdbh->prepare("SELECT ip_address_vc FROM x_ips
-                WHERE ip_enabled_in=1 AND ip_is_primary_in=0 AND ip_reseller_fk=:r AND $famcond
-                ORDER BY INET6_ATON(ip_address_vc)");
-            $st->execute([':r' => $owner]);
-            $rows = $st->fetchAll(PDO::FETCH_COLUMN);
-        }
-        $out = [];
-        $c = $zdbh->prepare("SELECT COUNT(*) FROM x_vhosts WHERE $col=:ip AND vh_acc_fk<>:uid AND vh_deleted_ts IS NULL");
-        foreach ($rows as $ip) {
-            $c->execute([':ip' => $ip, ':uid' => $uid]);
-            if ((int)$c->fetchColumn() === 0) { $out[] = $ip; }
-        }
-        return $out;
+        $st = $zdbh->prepare("SELECT ip_address_vc FROM x_ips
+            WHERE ip_user_fk=:uid AND ip_enabled_in=1 AND $famcond
+            ORDER BY INET6_ATON(ip_address_vc)");
+        $st->execute([':uid' => $uid]);
+        return $st->fetchAll(PDO::FETCH_COLUMN);
     }
 
     /** Actualiza los registros A web (@ y www) del dominio a la IP efectiva y marca rebuild de zona. */
@@ -1047,14 +1012,7 @@ class module_controller extends ctrl_module
         } else {
             if (!filter_var($choice, FILTER_VALIDATE_IP)) { $_SESSION['domains_ip_flash'] = ['err', 'IP no válida.']; return false; }
             if ($choice !== $current && !in_array($choice, self::assignableIPsForUser($uid), true)) {
-                $_SESSION['domains_ip_flash'] = ['err', 'Esa IP no está disponible para tu cuenta.']; return false;
-            }
-            // cuota: solo si es una IP NUEVA para el usuario
-            $quota   = self::userIpQuota($uid);
-            $userIPs = self::userDedicatedIPs($uid);
-            if (!in_array($choice, $userIPs, true) && $quota !== -1 && (count($userIPs) + 1) > $quota) {
-                $_SESSION['domains_ip_flash'] = ['err', 'Has alcanzado el límite de IPs dedicadas de tu paquete (' . $quota . ').'];
-                return false;
+                $_SESSION['domains_ip_flash'] = ['err', 'Esa IP no está asignada a tu cuenta.']; return false;
             }
             $newip = $choice;
         }
@@ -1266,12 +1224,11 @@ class module_controller extends ctrl_module
         $current  = trim((string)($vr['vh_custom_ip_vc'] ?? ''));
         $current6 = trim((string)($vr['vh_custom_ip6_vc'] ?? ''));
 
-        // Opciones IPv4 (con cuota)
-        $quota   = self::userIpQuota($uid);
-        $userIPs = self::userDedicatedIPs($uid);
-        $canAddNew = ($quota === -1) || (count($userIPs) < $quota);
-        $options = $userIPs;
-        if ($canAddNew) { foreach (self::assignableIPsForUser($uid, '4') as $ip) { if (!in_array($ip, $options, true)) $options[] = $ip; } }
+        // Opciones IPv4: solo las IPs ASIGNADAS a la cuenta (Fase 2b)
+        $quota    = self::userIpQuota($uid);
+        $userIPs  = self::userDedicatedIPs($uid);            // IPs distintas en uso
+        $assigned = self::assignableIPsForUser($uid, '4');   // IPs asignadas a la cuenta
+        $options  = $assigned;
         if ($current !== '' && !in_array($current, $options, true)) { $options[] = $current; }
         sort($options);
 
@@ -1304,7 +1261,7 @@ class module_controller extends ctrl_module
             return $o . '</select>';
         };
 
-        $qtxt = ($quota === -1) ? 'ilimitadas' : (string)$quota;
+        $qtxt = ($quota === -1) ? 'ilimitada' : (string)$quota;
         $h .= '<form action="./?module=domains&action=SaveDomainIP&show=IpSettings&id=' . $vhostid . '" method="post">' . $csrf
             . '<input type="hidden" name="inVhostId" value="' . $vhostid . '">'
             . '<table class="zform table table-striped">'
@@ -1314,8 +1271,10 @@ class module_controller extends ctrl_module
             . $mkSelect('inDomainIP6', $current6, $options6, $ip6SharedLabel) . '</td></tr>'
             . '<tr><th></th><td><button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-hdd-network me-1"></i>Guardar IPs</button></td></tr>'
             . '</table>'
-            . '<small class="text-muted">IPv4 dedicadas de tu paquete: <strong>' . $qtxt . '</strong> · en uso: ' . count($userIPs)
-            . '. La IPv6 es abundante y no consume cuota. "Compartida/Ninguna" no gastan cuota. '
+            . '<small class="text-muted">IPv4 asignadas a tu cuenta: <strong>' . count($assigned) . '</strong>'
+            . ' (cuota del paquete: ' . $qtxt . ') · en uso: ' . count($userIPs)
+            . '. Las IPs dedicadas te las asigna tu administrador o reseller (solo puedes elegir entre las tuyas). '
+            . 'La IPv6 es abundante y no consume cuota. "Compartida/Ninguna" no gastan cuota. '
             . 'Se ajustan los registros <strong>A</strong> (IPv4) y <strong>AAAA</strong> (IPv6) del dominio.</small></form>';
         return $h;
     }

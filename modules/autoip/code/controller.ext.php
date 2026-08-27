@@ -275,7 +275,9 @@ class module_controller extends ctrl_module {
 
     static function getIpPool() {
         global $zdbh;
-        $rows = $zdbh->query("SELECT * FROM x_ips ORDER BY ip_is_primary_in DESC, INET6_ATON(ip_address_vc) ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $zdbh->query("SELECT i.*, u.ac_user_vc AS assigned_user FROM x_ips i
+            LEFT JOIN x_accounts u ON u.ac_id_pk = i.ip_user_fk
+            ORDER BY i.ip_is_primary_in DESC, INET6_ATON(i.ip_address_vc) ASC")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$r) {
             $r['domain_list'] = self::ipDomains($r['ip_address_vc']);
             $r['domains']     = count($r['domain_list']);
@@ -345,6 +347,9 @@ class module_controller extends ctrl_module {
                     $rn = isset($rmap[$rid]) ? htmlspecialchars($rmap[$rid], ENT_QUOTES) : ('#' . $rid);
                     $parts[] = '<span class="badge bg-info">Reseller: ' . $rn . '</span>';
                 }
+                if (!empty($p['assigned_user'])) {
+                    $parts[] = '<span class="badge bg-dark">Usuario: ' . htmlspecialchars((string)$p['assigned_user'], ENT_QUOTES) . '</span>';
+                }
                 if (!empty($p['domain_list'])) {
                     $dl = [];
                     foreach ($p['domain_list'] as $d) {
@@ -367,11 +372,17 @@ class module_controller extends ctrl_module {
             }
 
             $acc = '<span class="text-muted">—</span>';
+            $hasUser = !empty($p['ip_user_fk']);
             if (!$prim) {
                 $acc  = '<form method="post" action="./?module=autoip&action=ToggleIP" style="display:inline;">' . $csrf
                       . '<input type="hidden" name="inIpId" value="' . (int)$p['ip_id_pk'] . '">'
                       . '<button type="submit" class="btn btn-sm btn-outline-secondary">' . ($ena ? 'Desactivar' : 'Activar') . '</button></form> ';
-                if ($rid > 0) {
+                if ($hasUser) {
+                    // asignada a un usuario: se libera desde aquí o en «IPs asignadas a clientes»
+                    $acc .= '<form method="post" action="./?module=autoip&action=ReleaseUserIp" style="display:inline;">' . $csrf
+                          . '<input type="hidden" name="inIpId" value="' . (int)$p['ip_id_pk'] . '">'
+                          . '<button type="submit" class="btn btn-sm btn-outline-warning"' . ($dom > 0 ? ' disabled title="en uso por dominios"' : '') . '>Liberar de usuario</button></form>';
+                } elseif ($rid > 0) {
                     // asignada a un reseller: permitir liberarla (si no está en uso)
                     $acc .= '<form method="post" action="./?module=autoip&action=ReleaseReseller" style="display:inline;">' . $csrf
                           . '<input type="hidden" name="inIpId" value="' . (int)$p['ip_id_pk'] . '">'
@@ -449,6 +460,7 @@ class module_controller extends ctrl_module {
         if (!$ipr) { self::$err_msg = 'IP no encontrada.'; return; }
         if (!empty($ipr['ip_is_primary_in'])) { self::$err_msg = 'No se puede quitar la IP primaria.'; return; }
         if (!empty($ipr['ip_reseller_fk']))    { self::$err_msg = 'Esa IP está asignada a un reseller; retírasela primero.'; return; }
+        if (!empty($ipr['ip_user_fk']))        { self::$err_msg = 'Esa IP está asignada a un usuario; libérala primero.'; return; }
         if (self::ipDomainCount($ipr['ip_address_vc']) > 0) { self::$err_msg = 'Esa IP está en uso por dominios; reasígnalos primero.'; return; }
 
         $zdbh->prepare("DELETE FROM x_ips WHERE ip_id_pk=:id")->execute([':id' => $id]);
@@ -513,6 +525,7 @@ class module_controller extends ctrl_module {
         $ipr = $ip->fetch(PDO::FETCH_ASSOC);
         if (!$ipr || !empty($ipr['ip_is_primary_in'])) { self::$err_msg = 'IP no válida.'; return; }
         if (!empty($ipr['ip_reseller_fk'])) { self::$err_msg = 'La IP ya está asignada a un reseller.'; return; }
+        if (!empty($ipr['ip_user_fk']))     { self::$err_msg = 'La IP está asignada a un usuario; libérala primero.'; return; }
         if (self::ipDomainCount($ipr['ip_address_vc']) > 0) { self::$err_msg = 'La IP está en uso por dominios.'; return; }
 
         $quota = self::resellerIpQuota($rid);
@@ -533,10 +546,292 @@ class module_controller extends ctrl_module {
         $ip = $zdbh->prepare("SELECT * FROM x_ips WHERE ip_id_pk=:id"); $ip->execute([':id' => $id]);
         $ipr = $ip->fetch(PDO::FETCH_ASSOC);
         if (!$ipr) { self::$err_msg = 'IP no encontrada.'; return; }
+        if (!empty($ipr['ip_user_fk'])) { self::$err_msg = 'La IP está asignada a un usuario; libérala primero.'; return; }
         if (self::ipDomainCount($ipr['ip_address_vc']) > 0) { self::$err_msg = 'La IP está en uso por dominios de ese reseller; libérala primero.'; return; }
         $zdbh->prepare("UPDATE x_ips SET ip_reseller_fk=NULL WHERE ip_id_pk=:id")->execute([':id' => $id]);
         self::$ok_msg = 'IP ' . htmlspecialchars((string)$ipr['ip_address_vc'], ENT_QUOTES) . ' devuelta al pool del admin.';
     }
+    // -----------------------------------------------------------------------
+    // Fase 2b: asignación de IPs a USUARIOS
+    //
+    // El admin (o el reseller con su propio pool) asigna IPs concretas a cada
+    // cuenta, limitado por la cuota de IPs dedicadas del paquete del usuario
+    // (qt_dedicatedips_in). El usuario las usa a su discreción entre sus
+    // dominios desde Domains (botón «IP»): solo puede elegir entre las suyas.
+    // -----------------------------------------------------------------------
+
+    /** Grupo del espectador actual. */
+    private static function viewerGroup(): int {
+        $u = ctrl_users::GetUserDetail();
+        return (int)($u['usergroupid'] ?? 3);
+    }
+
+    /** Guarda de plantilla: solo el admin (grupo 1) ve las secciones de servidor. */
+    static function getAdmin() { return self::viewerGroup() === 1; }
+
+    /** Pool que GOBIERNA las IPs de una cuenta (igual criterio que en domains):
+     *   - reseller (grupo 2) -> su propio pool (su id);
+     *   - usuario de un reseller grupo 2 -> pool de ese reseller;
+     *   - cualquier otro -> pool del admin (NULL). */
+    private static function ipOwnerForUser($uid) {
+        global $zdbh;
+        $q = $zdbh->prepare("SELECT ac_group_fk, ac_reseller_fk FROM x_accounts WHERE ac_id_pk=:id AND ac_deleted_ts IS NULL");
+        $q->execute([':id' => $uid]);
+        $a = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$a) return false;
+        if ((int)$a['ac_group_fk'] === 2) return (int)$uid;
+        $rid = (int)($a['ac_reseller_fk'] ?? 0);
+        if ($rid > 0) {
+            $r = $zdbh->prepare("SELECT ac_group_fk FROM x_accounts WHERE ac_id_pk=:id AND ac_deleted_ts IS NULL");
+            $r->execute([':id' => $rid]);
+            if ((int)$r->fetchColumn() === 2) return $rid;
+        }
+        return null;
+    }
+
+    /** Cuota de IPs dedicadas del paquete de un usuario (-1 ilimitado, 0 ninguna). */
+    private static function userIpQuota($uid) {
+        global $zdbh;
+        $q = $zdbh->prepare("SELECT COALESCE(qt.qt_dedicatedips_in,0) FROM x_accounts a
+            LEFT JOIN x_packages pk ON pk.pk_id_pk=a.ac_package_fk AND pk.pk_deleted_ts IS NULL
+            LEFT JOIN x_quotas  qt ON qt.qt_package_fk=pk.pk_id_pk
+            WHERE a.ac_id_pk=:u AND a.ac_deleted_ts IS NULL");
+        $q->execute([':u' => $uid]);
+        $v = $q->fetchColumn();
+        return $v === false ? 0 : (int)$v;
+    }
+
+    /** IPv4 ya asignadas a un usuario (la cuota solo cuenta IPv4; la IPv6 es abundante). */
+    private static function userAssignedIpCount($uid) {
+        global $zdbh;
+        $q = $zdbh->prepare("SELECT COUNT(*) FROM x_ips
+            WHERE ip_user_fk=:u AND INET6_ISIPV4(ip_address_vc)=1");
+        $q->execute([':u' => $uid]);
+        return (int)$q->fetchColumn();
+    }
+
+
+    /** IPs asignadas a usuarios, visibles para el espectador (admin: todas;
+     *  reseller: solo las de su pool -> sus clientes). */
+    static function getUserAssignments() {
+        global $zdbh;
+        $viewer = ctrl_users::GetUserDetail();
+        $vid = (int)$viewer['userid'];
+        if (self::viewerGroup() === 2) {
+            $q = $zdbh->prepare("SELECT i.ip_id_pk, i.ip_address_vc, i.ip_user_fk,
+                    u.ac_user_vc AS username
+                FROM x_ips i JOIN x_accounts u ON u.ac_id_pk=i.ip_user_fk
+                WHERE i.ip_reseller_fk=:r
+                ORDER BY u.ac_user_vc, INET6_ATON(i.ip_address_vc)");
+            $q->execute([':r' => $vid]);
+        } else {
+            $q = $zdbh->query("SELECT i.ip_id_pk, i.ip_address_vc, i.ip_user_fk,
+                    u.ac_user_vc AS username, r.ac_user_vc AS resellername
+                FROM x_ips i JOIN x_accounts u ON u.ac_id_pk=i.ip_user_fk
+                LEFT JOIN x_accounts r ON r.ac_id_pk=i.ip_reseller_fk
+                ORDER BY u.ac_user_vc, INET6_ATON(i.ip_address_vc)");
+        }
+        $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) { $row['domain_list'] = self::ipDomains($row['ip_address_vc']); }
+        return $rows;
+    }
+
+    /** IPs libres asignables para el espectador (activas, no primarias, sin usuario). */
+    private static function freeIpsForViewer() {
+        global $zdbh;
+        $viewer = ctrl_users::GetUserDetail();
+        $vid = (int)$viewer['userid'];
+        if (self::viewerGroup() === 2) {
+            $q = $zdbh->prepare("SELECT ip_id_pk, ip_address_vc, ip_reseller_fk FROM x_ips
+                WHERE ip_user_fk IS NULL AND ip_enabled_in=1 AND ip_is_primary_in=0 AND ip_reseller_fk=:r
+                ORDER BY INET6_ATON(ip_address_vc)");
+            $q->execute([':r' => $vid]);
+        } else {
+            $q = $zdbh->query("SELECT ip_id_pk, ip_address_vc, ip_reseller_fk FROM x_ips
+                WHERE ip_user_fk IS NULL AND ip_enabled_in=1 AND ip_is_primary_in=0
+                ORDER BY INET6_ATON(ip_address_vc)");
+        }
+        return $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /** Cuentas a las que el espectador puede asignar IPs. */
+    private static function assignableUsersForViewer() {
+        global $zdbh;
+        $viewer = ctrl_users::GetUserDetail();
+        $vid = (int)$viewer['userid'];
+        if (self::viewerGroup() === 2) {
+            $q = $zdbh->prepare("SELECT ac_id_pk, ac_user_vc FROM x_accounts
+                WHERE ac_reseller_fk=:r AND ac_enabled_in=1 AND ac_deleted_ts IS NULL ORDER BY ac_user_vc");
+            $q->execute([':r' => $vid]);
+        } else {
+            $q = $zdbh->query("SELECT ac_id_pk, ac_user_vc FROM x_accounts
+                WHERE ac_enabled_in=1 AND ac_deleted_ts IS NULL ORDER BY ac_user_vc");
+        }
+        return $q->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+
+    /** Sección «IPs asignadas a clientes» — tabla + formulario de asignación. */
+    static function getUserAssignHTML() {
+        $csrf  = self::getCSFR_Tag();
+        $admin = (self::viewerGroup() === 1);
+        $h = '';
+        if (!fs_director::CheckForEmptyValue(self::$err_msg)) {
+            $h .= ui_sysmessage::shout(self::$err_msg, 'zannounceerror');
+        } elseif (!fs_director::CheckForEmptyValue(self::$ok_msg)) {
+            $h .= ui_sysmessage::shout(self::$ok_msg, 'zannounceok');
+        }
+
+        $h .= '<p class="text-muted" style="font-size:12px;margin-bottom:8px;">'
+            . 'IPs asignadas a cuentas concretas: cada usuario solo puede usar SUS IPs en sus dominios '
+            . '(Domains → botón «IP»). La cuota de <em>IPs dedicadas</em> del paquete limita cuántas '
+            . 'IPv4 se pueden asignar a cada usuario.'
+            . ($admin ? '' : ' Solo ves las IPs de tu pool y tus clientes.')
+            . '</p>';
+
+        $rows = self::getUserAssignments();
+        if ($rows) {
+            $h .= '<table class="table table-sm align-middle" style="max-width:860px;">'
+                . '<thead><tr><th>IP</th><th>Usuario</th>'
+                . ($admin ? '<th>Pool</th>' : '')
+                . '<th>Dominios que la usan</th><th style="text-align:right;">Acciones</th></tr></thead><tbody>';
+            foreach ($rows as $r) {
+                $doms = [];
+                foreach ($r['domain_list'] as $d) { $doms[] = htmlspecialchars((string)$d['domain'], ENT_QUOTES); }
+                $h .= '<tr><td><strong>' . htmlspecialchars((string)$r['ip_address_vc'], ENT_QUOTES) . '</strong></td>'
+                    . '<td>' . htmlspecialchars((string)$r['username'], ENT_QUOTES) . '</td>'
+                    . ($admin ? '<td>' . (empty($r['resellername'])
+                        ? '<span class="text-muted">Admin</span>'
+                        : htmlspecialchars((string)$r['resellername'], ENT_QUOTES)) . '</td>' : '')
+                    . '<td>' . ($doms ? implode(', ', $doms) : '<span class="text-muted">ninguno</span>') . '</td>'
+                    . '<td style="text-align:right;">'
+                    . '<form method="post" action="./?module=autoip&action=ReleaseUserIp" style="display:inline;">' . $csrf
+                    . '<input type="hidden" name="inIpId" value="' . (int)$r['ip_id_pk'] . '">'
+                    . '<button type="submit" class="btn btn-sm btn-outline-warning"'
+                    . ($doms ? ' disabled title="en uso por dominios; reasígnalos primero"' : '')
+                    . '>Liberar</button></form></td></tr>';
+            }
+            $h .= '</tbody></table>';
+        } else {
+            $h .= '<p class="text-muted"><em>No hay IPs asignadas a usuarios.</em></p>';
+        }
+
+        // formulario de asignación
+        $ips   = self::freeIpsForViewer();
+        $users = self::assignableUsersForViewer();
+        if ($ips && $users) {
+            $h .= '<form method="post" action="./?module=autoip&action=AssignUserIp" style="margin-top:10px;">' . $csrf
+                . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+                . '<select name="inIpId" class="form-select form-select-sm" style="width:auto;" required><option value="">IP…</option>';
+            foreach ($ips as $ip) {
+                $lbl = $ip['ip_address_vc'] . ($admin
+                    ? (empty($ip['ip_reseller_fk']) ? ' (pool admin)' : ' (pool reseller)')
+                    : '');
+                $h .= '<option value="' . (int)$ip['ip_id_pk'] . '">' . htmlspecialchars($lbl, ENT_QUOTES) . '</option>';
+            }
+            $h .= '</select> → <select name="inUser" class="form-select form-select-sm" style="width:auto;" required><option value="">Usuario…</option>';
+            foreach ($users as $u) {
+                $uid  = (int)$u['ac_id_pk'];
+                $q    = self::userIpQuota($uid);
+                $used = self::userAssignedIpCount($uid);
+                $qtxt = ($q === -1) ? '∞' : ($used . '/' . $q);
+                $h .= '<option value="' . $uid . '">' . htmlspecialchars($u['ac_user_vc'], ENT_QUOTES)
+                    . ' (' . $qtxt . ')</option>';
+            }
+            $h .= '</select> <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-person-plus me-1"></i>Asignar IP</button>'
+                . '</div><small class="text-muted">Entre paréntesis: IPv4 asignadas/cuota del paquete. '
+                . 'La IP debe pertenecer al pool que gobierna al usuario (el admin puede asignar de cualquier pool).</small></form>';
+        } else {
+            $h .= '<p class="text-muted" style="font-size:12px;"><em>No hay IPs libres o usuarios a los que asignar.</em></p>';
+        }
+        return $h;
+    }
+
+
+    static function doAssignUserIp() {
+        runtime_csfr::Protect();
+        global $zdbh, $controller;
+        $vg = self::viewerGroup();
+        if ($vg !== 1 && $vg !== 2) { self::$err_msg = 'Sin permiso.'; return; }
+        $viewer = ctrl_users::GetUserDetail();
+        $vid    = (int)$viewer['userid'];
+
+        $f    = $controller->GetAllControllerRequests('FORM');
+        $id   = (int)($f['inIpId'] ?? 0);
+        $tuid = (int)($f['inUser'] ?? 0);
+        if ($id <= 0 || $tuid <= 0) { self::$err_msg = 'Datos inválidos.'; return; }
+
+        $iq = $zdbh->prepare("SELECT * FROM x_ips WHERE ip_id_pk=:id");
+        $iq->execute([':id' => $id]);
+        $ipr = $iq->fetch(PDO::FETCH_ASSOC);
+        if (!$ipr || !empty($ipr['ip_is_primary_in']) || empty($ipr['ip_enabled_in'])) {
+            self::$err_msg = 'IP no válida.'; return;
+        }
+        if (!empty($ipr['ip_user_fk'])) { self::$err_msg = 'La IP ya está asignada a un usuario.'; return; }
+
+        $uq = $zdbh->prepare("SELECT ac_user_vc, ac_reseller_fk FROM x_accounts
+            WHERE ac_id_pk=:u AND ac_enabled_in=1 AND ac_deleted_ts IS NULL");
+        $uq->execute([':u' => $tuid]);
+        $acc = $uq->fetch(PDO::FETCH_ASSOC);
+        if (!$acc) { self::$err_msg = 'Usuario no válido.'; return; }
+
+        // ámbito del espectador
+        $poolIp = (int)($ipr['ip_reseller_fk'] ?? 0);
+        if ($vg === 2) {
+            if ($poolIp !== $vid) { self::$err_msg = 'Solo puedes asignar IPs de tu pool.'; return; }
+            if ((int)($acc['ac_reseller_fk'] ?? 0) !== $vid) { self::$err_msg = 'Solo puedes asignar IPs a tus clientes.'; return; }
+        } else {
+            // admin: la IP debe pertenecer al pool que gobierna al usuario destino
+            $owner = self::ipOwnerForUser($tuid);
+            if ((int)($owner ?? 0) !== $poolIp) {
+                self::$err_msg = 'Esa IP no pertenece al pool que gobierna a ese usuario.'; return;
+            }
+        }
+
+        // la cuota solo cuenta IPv4 (la IPv6 es abundante)
+        $isV4 = filter_var($ipr['ip_address_vc'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+        if ($isV4) {
+            $quota = self::userIpQuota($tuid);
+            if ($quota === 0) { self::$err_msg = 'El paquete del usuario no permite IPs dedicadas.'; return; }
+            if ($quota !== -1 && (self::userAssignedIpCount($tuid) + 1) > $quota) {
+                self::$err_msg = 'El usuario ya tiene asignadas las IPv4 de su paquete (' . $quota . ').'; return;
+            }
+        }
+
+        $zdbh->prepare("UPDATE x_ips SET ip_user_fk=:u WHERE ip_id_pk=:id")
+             ->execute([':u' => $tuid, ':id' => $id]);
+        self::$ok_msg = 'IP ' . htmlspecialchars((string)$ipr['ip_address_vc'], ENT_QUOTES)
+                      . ' asignada a ' . htmlspecialchars((string)$acc['ac_user_vc'], ENT_QUOTES) . '.';
+    }
+
+    static function doReleaseUserIp() {
+        runtime_csfr::Protect();
+        global $zdbh, $controller;
+        $vg = self::viewerGroup();
+        if ($vg !== 1 && $vg !== 2) { self::$err_msg = 'Sin permiso.'; return; }
+        $viewer = ctrl_users::GetUserDetail();
+        $vid    = (int)$viewer['userid'];
+
+        $f  = $controller->GetAllControllerRequests('FORM');
+        $id = (int)($f['inIpId'] ?? 0);
+        if ($id <= 0) { self::$err_msg = 'IP no válida.'; return; }
+        $iq = $zdbh->prepare("SELECT * FROM x_ips WHERE ip_id_pk=:id");
+        $iq->execute([':id' => $id]);
+        $ipr = $iq->fetch(PDO::FETCH_ASSOC);
+        if (!$ipr || empty($ipr['ip_user_fk'])) { self::$err_msg = 'La IP no está asignada a ningún usuario.'; return; }
+
+        $poolIp = (int)($ipr['ip_reseller_fk'] ?? 0);
+        if ($vg === 2 && $poolIp !== $vid) { self::$err_msg = 'Solo puedes liberar IPs de tu pool.'; return; }
+
+        if (self::ipDomainCount($ipr['ip_address_vc']) > 0) {
+            self::$err_msg = 'La IP está en uso por dominios; pásalos a otra IP (o compartida) primero.'; return;
+        }
+        $zdbh->prepare("UPDATE x_ips SET ip_user_fk=NULL WHERE ip_id_pk=:id")->execute([':id' => $id]);
+        self::$ok_msg = 'IP ' . htmlspecialchars((string)$ipr['ip_address_vc'], ENT_QUOTES)
+                      . ' liberada y devuelta al pool.';
+    }
+
+
 
     // -----------------------------------------------------------------------
     // Install
