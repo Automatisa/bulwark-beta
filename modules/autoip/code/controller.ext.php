@@ -601,11 +601,12 @@ class module_controller extends ctrl_module {
         return $v === false ? 0 : (int)$v;
     }
 
-    /** IPv4 ya asignadas a un usuario (la cuota solo cuenta IPv4; la IPv6 es abundante). */
+    /** IPv4 ya asignadas a un usuario (la cuota solo cuenta IPv4; la IPv6 es abundante).
+     *  OJO: INET6_ISIPV4() solo existe en MariaDB; el patrón NOT LIKE '%:%' es portable. */
     private static function userAssignedIpCount($uid) {
         global $zdbh;
         $q = $zdbh->prepare("SELECT COUNT(*) FROM x_ips
-            WHERE ip_user_fk=:u AND INET6_ISIPV4(ip_address_vc)=1");
+            WHERE ip_user_fk=:u AND ip_address_vc NOT LIKE '%:%'");
         $q->execute([':u' => $uid]);
         return (int)$q->fetchColumn();
     }
