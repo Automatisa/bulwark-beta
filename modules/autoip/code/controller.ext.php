@@ -285,30 +285,62 @@ class module_controller extends ctrl_module {
         return $rows;
     }
 
-    /** Expande una entrada de alta: IP suelta, CIDR IPv4 a.b.c.d/nn (prefijo /24..32) o
-     *  rango IPv4 con guion (a.b.c.d-e.f.g.h ó a.b.c.d-N, último octeto). Máx. 256
+    /** Suma 1 a una dirección empaquetada de 16 bytes; devuelve false si desborda. */
+    private static function inetIncrement($bin) {
+        $bytes = unpack('C16', $bin);
+        for ($i = 16; $i >= 1; $i--) {
+            if ($bytes[$i] < 255) { $bytes[$i]++; return pack('C*', ...$bytes); }
+            $bytes[$i] = 0;
+        }
+        return false;
+    }
+
+    /** Expande una entrada de alta: IP suelta (v4/v6), CIDR IPv4 a.b.c.d/nn (/24..32),
+     *  CIDR IPv6 (/120../128) o rango con guion en ambas familias
+     *  (a.b.c.d-e.f.g.h ó forma corta a.b.c.d-N; v6 completa a-b). Máx. 256
      *  direcciones; devuelve null si la entrada no es válida. */
     private static function expandIPInput($in) {
         $in = trim($in);
         if (filter_var($in, FILTER_VALIDATE_IP)) return array($in);
 
-        // rango con guion: «a.b.c.d-e.f.g.h» o forma corta «a.b.c.d-N»
+        // rango con guion (ninguna familia usa '-' en su notación)
         if (strpos($in, '-') !== false) {
             $parts = array_map('trim', explode('-', $in));
             if (count($parts) !== 2) return null;
             list($a, $b) = $parts;
-            if (!filter_var($a, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) return null;
-            if (!filter_var($b, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                if (!preg_match('/^\d{1,3}$/', $b)) return null;
-                $b = preg_replace('/\d+$/', $b, $a); // forma corta: mismo /24, cambia el último octeto
+
+            if (filter_var($a, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                // IPv4: «a.b.c.d-e.f.g.h» o forma corta «a.b.c.d-N»
+                if (!filter_var($b, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+                    if (!preg_match('/^\d{1,3}$/', $b)) return null;
+                    $b = preg_replace('/\d+$/', $b, $a); // forma corta: mismo /24, cambia el último octeto
+                }
+                $s = ip2long($a); $e = ip2long($b);
+                if ($s === false || $e === false) return null;
+                if ($s > $e) { $t = $s; $s = $e; $e = $t; }
+                if (($e - $s + 1) > 256) return null;
+                $ips = array();
+                for ($i = $s; $i <= $e; $i++) $ips[] = long2ip($i);
+                return $ips;
             }
-            $s = ip2long($a); $e = ip2long($b);
-            if ($s === false || $e === false) return null;
-            if ($s > $e) { $t = $s; $s = $e; $e = $t; }
-            if (($e - $s + 1) > 256) return null;
-            $ips = array();
-            for ($i = $s; $i <= $e; $i++) $ips[] = long2ip($i);
-            return $ips;
+
+            if (filter_var($a, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
+                && filter_var($b, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+                // IPv6: recuento byte a byte con tope de 256
+                $s = inet_pton($a); $e = inet_pton($b);
+                if (strcmp($s, $e) > 0) { $t = $s; $s = $e; $e = $t; }
+                $ips = array();
+                $cur = $s;
+                while (strcmp($cur, $e) <= 0) {
+                    $ips[] = inet_ntop($cur);
+                    if (count($ips) > 256) return null;
+                    if (strcmp($cur, $e) === 0) break;
+                    $cur = self::inetIncrement($cur);
+                    if ($cur === false) return null;
+                }
+                return $ips;
+            }
+            return null;
         }
 
         if (preg_match('#^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/(\d{1,2})$#', $in, $m)) {
@@ -321,6 +353,31 @@ class module_controller extends ctrl_module {
                 // en bloques de 4+ direcciones (<= /30) excluir red y broadcast
                 if ($prefix <= 30 && ($i === 0 || $i === $count - 1)) continue;
                 $ips[] = long2ip($network + $i);
+            }
+            return $ips;
+        }
+
+        // CIDR IPv6: solo prefijos /120../128 (máx. 256 direcciones)
+        if (preg_match('#^(.+)/(\d{1,3})$#', $in, $m)
+            && filter_var($m[1], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $prefix = (int)$m[2];
+            if ($prefix < 120 || $prefix > 128) return null;
+            $count = 1 << (128 - $prefix);
+            // dirección de red: poner a cero la parte de host
+            $bytes = unpack('C16', inet_pton($m[1]));
+            $full  = intdiv($prefix, 8);
+            $rem   = $prefix % 8;
+            $idx   = $full;
+            if ($rem > 0 && $idx < 16) { $bytes[$idx + 1] &= (0xFF << (8 - $rem)) & 0xFF; $idx++; }
+            for ($i = $idx + 1; $i <= 16; $i++) { $bytes[$i] = 0; }
+            $ips = array();
+            $cur = pack('C*', ...$bytes);
+            for ($i = 0; $i < $count; $i++) {
+                // excluir la dirección de red (subnet-router anycast) en bloques de 4+
+                if ($prefix <= 126 && $i === 0) { $cur = self::inetIncrement($cur); continue; }
+                $ips[] = inet_ntop($cur);
+                $cur = self::inetIncrement($cur);
+                if ($cur === false) break;
             }
             return $ips;
         }
@@ -436,9 +493,9 @@ class module_controller extends ctrl_module {
         // formulario de alta (IP suelta, rango CIDR o rango con guion)
         $h .= '<form method="post" action="./?module=autoip&action=AddIP" style="margin-top:10px;">' . $csrf
             . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
-            . '<input type="text" name="inNewIP" placeholder="192.168.1.50 · fd00::10 · 192.168.1.48/29 · 192.168.1.50-192.168.1.60" maxlength="45" style="width:420px;" class="form-control form-control-sm" required>'
+            . '<input type="text" name="inNewIP" placeholder="192.168.1.50 · 192.168.1.48/29 · 192.168.1.50-60 · 2a01:4f8::10 · 2a01:4f8::10-2a01:4f8::20" maxlength="80" style="width:460px;" class="form-control form-control-sm" required>'
             . '<button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Añadir al pool</button>'
-            . '</div><small class="text-muted">Acepta una IP suelta (IPv4 o IPv6), un CIDR IPv4 (/24 a /32) o un rango con guion (máx. 256 IPs; en bloques se excluyen red y broadcast). Solo inventario — sin tocar la red aún.</small></form>';
+            . '</div><small class="text-muted">Acepta una IP suelta (IPv4 o IPv6) o un rango IPv4 (CIDR /24-/32 o guion) / IPv6 (CIDR /120-/128 o guion); máx. 256 IPs, y en bloques de 4+ se excluye la dirección de red (y broadcast en IPv4). Solo inventario — sin tocar la red aún.</small></form>';
 
         return $h;
     }
@@ -451,7 +508,7 @@ class module_controller extends ctrl_module {
         $input = trim((string)($f['inNewIP'] ?? ''));
 
         $ips = self::expandIPInput($input);
-        if ($ips === null || empty($ips)) { self::$err_msg = 'IP o rango inválido (CIDR /24 a /32, o guion con máx. 256 IPs).'; return; }
+        if ($ips === null || empty($ips)) { self::$err_msg = 'IP o rango inválido (IPv4: CIDR /24-/32 o guion; IPv6: CIDR /120-/128 o guion; máx. 256 IPs).'; return; }
 
         $server_ip = (string)ctrl_options::GetOption('server_ip');
         $added = 0; $skipped = 0;
@@ -765,8 +822,8 @@ class module_controller extends ctrl_module {
                 . '</div>'
                 . '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">'
                 . '<label class="text-muted" style="font-size:12px;">o rango:</label>'
-                . '<input type="text" name="inIpRange" placeholder="203.0.113.0/28 · 203.0.113.1-203.0.113.16" maxlength="45" style="width:340px;" class="form-control form-control-sm">'
-                . '</div><small class="text-muted">Elige una IP de la lista o escribe un rango (CIDR /24 a /32 o con guion); no ambos. '
+                . '<input type="text" name="inIpRange" placeholder="203.0.113.0/28 · 203.0.113.1-203.0.113.16 · 2a01:4f8::10-2a01:4f8::20" maxlength="80" style="width:420px;" class="form-control form-control-sm">'
+                . '</div><small class="text-muted">Elige una IP de la lista o escribe un rango (IPv4: CIDR /24-/32 o guion; IPv6: CIDR /120-/128 o guion); no ambos. '
                 . 'Entre paréntesis: IPv4 asignadas/cuota del paquete. '
                 . 'Las IPs deben pertenecer al pool que gobierna al usuario (el admin puede asignar de cualquier pool).</small></form>';
         } else {
@@ -798,7 +855,7 @@ class module_controller extends ctrl_module {
         if ($range !== '') {
             $ips = self::expandIPInput($range);
             if ($ips === null || empty($ips)) {
-                self::$err_msg = 'Rango inválido (CIDR /24 a /32, o guion con máx. 256 IPs).'; return;
+                self::$err_msg = 'Rango inválido (IPv4: CIDR /24-/32 o guion; IPv6: CIDR /120-/128 o guion; máx. 256 IPs).'; return;
             }
 
             $uq = $zdbh->prepare("SELECT ac_user_vc, ac_reseller_fk FROM x_accounts
